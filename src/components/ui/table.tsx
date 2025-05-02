@@ -1,3 +1,4 @@
+
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
@@ -66,14 +67,19 @@ const TableRow = React.forwardRef<
 ))
 TableRow.displayName = "TableRow"
 
+// Add padding prop type
+type TableCellPadding = "default" | "checkbox" | "none";
+
 const TableHead = React.forwardRef<
   HTMLTableCellElement,
-  React.ThHTMLAttributes<HTMLTableCellElement>
->(({ className, ...props }, ref) => (
+  React.ThHTMLAttributes<HTMLTableCellElement> & { padding?: TableCellPadding }
+>(({ className, padding = "default", ...props }, ref) => (
   <th
     ref={ref}
     className={cn(
-      "h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0",
+      "h-12 px-4 text-left align-middle font-medium text-muted-foreground",
+      padding === "checkbox" && "px-2 w-[40px]", // Specific style for checkbox padding
+      padding === "none" && "p-0",
       className
     )}
     {...props}
@@ -83,15 +89,21 @@ TableHead.displayName = "TableHead"
 
 const TableCell = React.forwardRef<
   HTMLTableCellElement,
-  React.TdHTMLAttributes<HTMLTableCellElement>
->(({ className, ...props }, ref) => (
+  React.TdHTMLAttributes<HTMLTableCellElement> & { padding?: TableCellPadding }
+>(({ className, padding = "default", ...props }, ref) => (
   <td
     ref={ref}
-    className={cn("p-4 align-middle [&:has([role=checkbox])]:pr-0", className)}
+    className={cn(
+      "p-4 align-middle",
+      padding === "checkbox" && "px-2 w-[40px]", // Specific style for checkbox padding
+      padding === "none" && "p-0",
+       className
+    )}
     {...props}
   />
 ))
 TableCell.displayName = "TableCell"
+
 
 const TableCaption = React.forwardRef<
   HTMLTableCaptionElement,

@@ -17,6 +17,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { ClientFormattedCurrency } from '@/components/ui/client-formatted-currency'; // Import the new component
 import { cn } from '@/lib/utils';
 import type { Transaction } from '@/types'; // Ensure path is correct
 
@@ -81,13 +82,21 @@ export function StatementTable({
     const aValue = a[sortColumn];
     const bValue = b[sortColumn];
 
+    // Handle sorting for amount specifically as numbers
+    if (sortColumn === 'amount') {
+      return sortDirection === 'asc' ? (aValue as number) - (bValue as number) : (bValue as number) - (aValue as number);
+    }
+
+    // Default string/date comparison
     if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
     if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
     return 0;
   });
 
-  const isAllSelected = selectedIds.length > 0 && selectedIds.length === transactions.filter(t => !matchedIds.includes(t.id)).length;
-  const isIndeterminate = selectedIds.length > 0 && !isAllSelected;
+  const isAllSelected = transactions.length > 0 && transactions.every(t => matchedIds.includes(t.id) || selectedIds.includes(t.id)) && transactions.filter(t => !matchedIds.includes(t.id)).length > 0;
+
+  const isIndeterminate = selectedIds.length > 0 && !isAllSelected && selectedIds.length < transactions.filter(t => !matchedIds.includes(t.id)).length;
+
 
   return (
     <Card className={cn("w-full shadow-md", className)}>
@@ -109,10 +118,9 @@ export function StatementTable({
             <TableRow>
               <TableHead padding="checkbox">
                 <Checkbox
-                  checked={isAllSelected || isIndeterminate}
+                  checked={isAllSelected ? true : (isIndeterminate ? 'indeterminate' : false)}
                   onCheckedChange={handleSelectAll}
                   aria-label="Select all"
-                  className={isIndeterminate ? 'data-[state=checked]:bg-muted-foreground' : ''}
                   disabled={transactions.every(t => matchedIds.includes(t.id))} // Disable if all are matched
                 />
               </TableHead>
@@ -161,7 +169,8 @@ export function StatementTable({
                     <TableCell className="whitespace-nowrap">{transaction.date}</TableCell>
                     <TableCell>{transaction.description}</TableCell>
                     <TableCell className="text-right whitespace-nowrap">
-                      {transaction.amount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })} {/* Adjust currency as needed */}
+                      {/* Use the client-side formatting component */}
+                      <ClientFormattedCurrency amount={transaction.amount} currency="USD" />
                     </TableCell>
                   </TableRow>
                  )

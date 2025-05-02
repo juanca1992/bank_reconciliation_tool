@@ -67,20 +67,21 @@ const TableRow = React.forwardRef<
 ))
 TableRow.displayName = "TableRow"
 
-// Add padding prop type
+// Define padding options type if needed elsewhere, but removed from component props directly
 type TableCellPadding = "default" | "checkbox" | "none";
 
 const TableHead = React.forwardRef<
   HTMLTableCellElement,
-  React.ThHTMLAttributes<HTMLTableCellElement> & { padding?: TableCellPadding }
->(({ className, padding = "default", ...props }, ref) => (
+  React.ThHTMLAttributes<HTMLTableCellElement> & { padding?: TableCellPadding } // Keep prop for potential future use or consistency, but className handles actual padding
+>(({ className, padding, ...props }, ref) => ( // `padding` prop is now primarily for semantic meaning if used
   <th
     ref={ref}
     className={cn(
       "h-12 px-4 text-left align-middle font-medium text-muted-foreground",
-      padding === "checkbox" && "px-2 w-[40px]", // Specific style for checkbox padding
+       // Example of how padding prop *could* be used, but often overridden by direct className usage
+      padding === "checkbox" && "px-2 w-[40px]",
       padding === "none" && "p-0",
-      className
+      className // Direct className takes precedence
     )}
     {...props}
   />
@@ -89,15 +90,16 @@ TableHead.displayName = "TableHead"
 
 const TableCell = React.forwardRef<
   HTMLTableCellElement,
-  React.TdHTMLAttributes<HTMLTableCellElement> & { padding?: TableCellPadding }
->(({ className, padding = "default", ...props }, ref) => (
+  React.TdHTMLAttributes<HTMLTableCellElement> & { padding?: TableCellPadding } // Keep prop for potential future use or consistency
+>(({ className, padding, ...props }, ref) => ( // `padding` prop is now primarily for semantic meaning if used
   <td
     ref={ref}
     className={cn(
-      "p-4 align-middle",
-      padding === "checkbox" && "px-2 w-[40px]", // Specific style for checkbox padding
+      "p-4 align-middle", // Default padding
+      // Example of how padding prop *could* be used
+      padding === "checkbox" && "px-2 w-[40px]",
       padding === "none" && "p-0",
-       className
+       className // Direct className takes precedence
     )}
     {...props}
   />
@@ -127,3 +129,4 @@ export {
   TableCell,
   TableCaption,
 }
+

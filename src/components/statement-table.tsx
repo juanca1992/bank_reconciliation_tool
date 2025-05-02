@@ -28,6 +28,8 @@ interface StatementTableProps {
   matchedIds: string[]; // IDs of transactions already matched
   onSelectionChange: (selectedIds: string[]) => void;
   className?: string;
+  locale?: string; // Added locale prop
+  currency?: string; // Added currency prop
 }
 
 export function StatementTable({
@@ -37,6 +39,8 @@ export function StatementTable({
   matchedIds,
   onSelectionChange,
   className,
+  locale = 'en-US', // Default locale
+  currency = 'USD', // Default currency
 }: StatementTableProps) {
   const [filter, setFilter] = useState('');
   const [sortColumn, setSortColumn] = useState<keyof Transaction | null>(null);
@@ -105,7 +109,7 @@ export function StatementTable({
          <div className="flex items-center gap-2 pt-2">
              <Filter className="h-4 w-4 text-muted-foreground" />
              <Input
-               placeholder="Filter transactions..."
+               placeholder="Filtrar transacciones..." // Translated placeholder
                value={filter}
                onChange={(e) => setFilter(e.target.value)}
                className="max-w-sm h-8"
@@ -120,25 +124,25 @@ export function StatementTable({
                 <Checkbox
                   checked={isAllSelected ? true : (isIndeterminate ? 'indeterminate' : false)}
                   onCheckedChange={handleSelectAll}
-                  aria-label="Select all"
+                  aria-label="Seleccionar todo" // Translated aria-label
                   disabled={transactions.every(t => matchedIds.includes(t.id))} // Disable if all are matched
                 />
               </TableHead>
               <TableHead onClick={() => handleSort('date')}>
                  <Button variant="ghost" size="sm" className="px-2 py-1 h-auto">
-                  Date
+                  Fecha {/* Translated header */}
                   <ArrowUpDown className="ml-2 h-3 w-3" />
                  </Button>
               </TableHead>
               <TableHead onClick={() => handleSort('description')}>
                  <Button variant="ghost" size="sm" className="px-2 py-1 h-auto">
-                  Description
+                  Descripción {/* Translated header */}
                   <ArrowUpDown className="ml-2 h-3 w-3" />
                   </Button>
               </TableHead>
               <TableHead onClick={() => handleSort('amount')} className="text-right">
                  <Button variant="ghost" size="sm" className="px-2 py-1 h-auto">
-                  Amount
+                  Monto {/* Translated header */}
                   <ArrowUpDown className="ml-2 h-3 w-3" />
                  </Button>
               </TableHead>
@@ -162,15 +166,15 @@ export function StatementTable({
                       <Checkbox
                         checked={isSelected || isMatched} // Show check if selected or matched
                         onCheckedChange={(checked) => handleRowSelect(transaction.id, checked)}
-                        aria-label={`Select transaction ${transaction.id}`}
+                        aria-label={`Seleccionar transacción ${transaction.id}`} // Translated aria-label
                         disabled={isMatched} // Disable checkbox if matched
                       />
                     </TableCell>
                     <TableCell className="whitespace-nowrap">{transaction.date}</TableCell>
                     <TableCell>{transaction.description}</TableCell>
                     <TableCell className="text-right whitespace-nowrap">
-                      {/* Use the client-side formatting component */}
-                      <ClientFormattedCurrency amount={transaction.amount} currency="USD" />
+                      {/* Use the client-side formatting component with passed locale and currency */}
+                      <ClientFormattedCurrency amount={transaction.amount} currency={currency} locale={locale} />
                     </TableCell>
                   </TableRow>
                  )
@@ -178,7 +182,7 @@ export function StatementTable({
             ) : (
               <TableRow>
                 <TableCell colSpan={4} className="h-24 text-center">
-                  No transactions found.
+                  No se encontraron transacciones. {/* Translated message */}
                 </TableCell>
               </TableRow>
             )}

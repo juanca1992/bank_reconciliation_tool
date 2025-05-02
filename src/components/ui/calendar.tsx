@@ -1,8 +1,9 @@
+
 "use client"
 
 import * as React from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
-import { DayPicker } from "react-day-picker"
+import { DayPicker, es } from "react-day-picker" // Import Spanish locale
 
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
@@ -13,10 +14,12 @@ function Calendar({
   className,
   classNames,
   showOutsideDays = true,
+  locale = es, // Set default locale to Spanish
   ...props
 }: CalendarProps) {
   return (
     <DayPicker
+      locale={locale} // Pass locale to DayPicker
       showOutsideDays={showOutsideDays}
       className={cn("p-3", className)}
       classNames={{
@@ -60,6 +63,14 @@ function Calendar({
         IconRight: ({ className, ...props }) => (
           <ChevronRight className={cn("h-4 w-4", className)} {...props} />
         ),
+      }}
+      labels={{ // Add Spanish labels
+        labelNext: () => "Mes siguiente",
+        labelPrevious: () => "Mes anterior",
+        labelMonthDropdown: () => "Seleccionar mes",
+        labelYearDropdown: () => "Seleccionar año",
+        labelDay: (date, options) => `Seleccionar ${date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`,
+        ...props.labels, // Allow overriding via props
       }}
       {...props}
     />

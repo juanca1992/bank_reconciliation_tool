@@ -12,18 +12,19 @@ import type { Transaction, MatchedPair } from '@/types';
 import { Link2 } from 'lucide-react';
 
 // Placeholder data - replace with actual data loading logic
+// Translated descriptions
 const initialBankTransactions: Transaction[] = [
-  { id: 'b1', date: '2024-07-01', description: 'Deposit from Client A', amount: 1500.00, type: 'bank' },
-  { id: 'b2', date: '2024-07-03', description: 'Withdrawal - ATM', amount: -100.00, type: 'bank' },
-  { id: 'b3', date: '2024-07-05', description: 'Payment - Supplier X', amount: -350.50, type: 'bank' },
-  { id: 'b4', date: '2024-07-08', description: 'Interest Earned', amount: 5.25, type: 'bank' },
+  { id: 'b1', date: '2024-07-01', description: 'Depósito del Cliente A', amount: 1500.00, type: 'bank' },
+  { id: 'b2', date: '2024-07-03', description: 'Retiro - Cajero Automático', amount: -100.00, type: 'bank' },
+  { id: 'b3', date: '2024-07-05', description: 'Pago - Proveedor X', amount: -350.50, type: 'bank' },
+  { id: 'b4', date: '2024-07-08', description: 'Intereses Ganados', amount: 5.25, type: 'bank' },
 ];
 
 const initialAccountingTransactions: Transaction[] = [
-  { id: 'a1', date: '2024-07-01', description: 'Invoice #123 Payment', amount: 1500.00, type: 'accounting' },
-  { id: 'a2', date: '2024-07-04', description: 'Office Supplies Expense', amount: -100.00, type: 'accounting' },
-  { id: 'a3', date: '2024-07-05', description: 'Payment for INV-SUPX', amount: -350.50, type: 'accounting' },
-  { id: 'a4', date: '2024-07-09', description: 'Bank Interest Income', amount: 5.25, type: 'accounting' },
+  { id: 'a1', date: '2024-07-01', description: 'Pago Factura #123', amount: 1500.00, type: 'accounting' },
+  { id: 'a2', date: '2024-07-04', description: 'Gasto Suministros Oficina', amount: -100.00, type: 'accounting' },
+  { id: 'a3', date: '2024-07-05', description: 'Pago por INV-SUPX', amount: -350.50, type: 'accounting' },
+  { id: 'a4', date: '2024-07-09', description: 'Ingreso Intereses Bancarios', amount: 5.25, type: 'accounting' },
 ];
 
 
@@ -37,21 +38,20 @@ export default function Home() {
   const { toast } = useToast();
 
   const handleBankFileUpload = (file: File | null) => {
-    console.log("Bank file uploaded:", file?.name);
+    console.log("Archivo bancario subido:", file?.name);
     // Add logic here to parse the file and update bankTransactions state
-    // For now, we'll just log it.
     if (file) {
-       toast({ title: "Bank Statement Uploaded", description: file.name });
+       toast({ title: "Extracto Bancario Subido", description: file.name });
        // Example: Placeholder data update on upload (replace with actual parsing)
        // setBankTransactions(parsedBankData);
     }
   };
 
   const handleAccountingFileUpload = (file: File | null) => {
-    console.log("Accounting file uploaded:", file?.name);
+    console.log("Archivo contable subido:", file?.name);
     // Add logic here to parse the file and update accountingTransactions state
     if (file) {
-      toast({ title: "Accounting Statement Uploaded", description: file.name });
+      toast({ title: "Extracto Contable Subido", description: file.name });
       // Example: Placeholder data update on upload (replace with actual parsing)
       // setAccountingTransactions(parsedAccountingData);
     }
@@ -60,8 +60,8 @@ export default function Home() {
   const handleManualMatch = () => {
     if (selectedBankIds.length !== 1 || selectedAccountingIds.length !== 1) {
       toast({
-        title: "Matching Error",
-        description: "Please select exactly one transaction from each statement to match.",
+        title: "Error de Conciliación",
+        description: "Por favor, seleccione exactamente una transacción de cada extracto para conciliar.",
         variant: "destructive",
       });
       return;
@@ -71,15 +71,15 @@ export default function Home() {
     const accTx = accountingTransactions.find(tx => tx.id === selectedAccountingIds[0]);
 
     if (!bankTx || !accTx) {
-       toast({ title: "Error", description: "Selected transaction not found.", variant: "destructive" });
+       toast({ title: "Error", description: "Transacción seleccionada no encontrada.", variant: "destructive" });
        return;
     }
 
     // Basic check (can be more sophisticated)
     if (bankTx.amount !== accTx.amount) {
        toast({
-         title: "Potential Mismatch",
-         description: `Amounts differ (${bankTx.amount.toFixed(2)} vs ${accTx.amount.toFixed(2)}). Match anyway?`,
+         title: "Posible Discrepancia",
+         description: `Los montos difieren (${bankTx.amount.toFixed(2)} vs ${accTx.amount.toFixed(2)}). ¿Conciliar de todas formas?`,
          // Optionally add an action button for confirmation
        });
        // For now, let's allow mismatch for demonstration
@@ -96,8 +96,8 @@ export default function Home() {
     setSelectedAccountingIds([]);
 
     toast({
-      title: "Match Successful",
-      description: `Matched ${bankTx.description} with ${accTx.description}`,
+      title: "Conciliación Exitosa",
+      description: `Conciliado ${bankTx.description} con ${accTx.description}`,
       variant: "default", // or use 'success' if you add that variant
       className: "bg-accent text-accent-foreground border-accent", // Use gold accent for success
     });
@@ -109,17 +109,17 @@ export default function Home() {
 
   return (
     <main className="flex min-h-screen flex-col items-center p-4 md:p-12 bg-secondary">
-       <h1 className="text-3xl font-bold mb-8 text-primary">Bank Reconciliation Tool</h1>
+       <h1 className="text-3xl font-bold mb-8 text-primary">Herramienta de Conciliación Bancaria</h1>
 
        {/* Upload Section */}
        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-6xl mb-8">
          <StatementUpload
-           title="Upload Bank Statement"
+           title="Subir Extracto Bancario"
            onFileUpload={handleBankFileUpload}
            className="bg-card"
           />
          <StatementUpload
-           title="Upload Accounting System Statement"
+           title="Subir Extracto del Sistema Contable"
            onFileUpload={handleAccountingFileUpload}
            className="bg-card"
           />
@@ -130,7 +130,7 @@ export default function Home() {
         {/* Matching Controls */}
        <Card className="w-full max-w-6xl mb-8 shadow-md">
           <CardHeader>
-             <CardTitle className="text-lg">Manual Matching</CardTitle>
+             <CardTitle className="text-lg">Conciliación Manual</CardTitle>
           </CardHeader>
           <CardContent className="flex items-center justify-center">
              <Button
@@ -139,7 +139,7 @@ export default function Home() {
                className="bg-accent text-accent-foreground hover:bg-accent/90"
               >
                 <Link2 className="mr-2 h-4 w-4" />
-                Match Selected Transactions
+                Conciliar Transacciones Seleccionadas
              </Button>
           </CardContent>
        </Card>
@@ -147,20 +147,24 @@ export default function Home() {
        {/* Statement Tables Section */}
        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full max-w-6xl">
          <StatementTable
-           title="Bank Statement Transactions"
+           title="Transacciones del Extracto Bancario"
            transactions={bankTransactions}
            selectedIds={selectedBankIds}
            matchedIds={matchedBankIds}
            onSelectionChange={setSelectedBankIds}
            className="bg-card"
+           locale="es-ES" // Pass Spanish locale
+           currency="EUR" // Use Euro for example
           />
          <StatementTable
-           title="Accounting System Transactions"
+           title="Transacciones del Sistema Contable"
            transactions={accountingTransactions}
            selectedIds={selectedAccountingIds}
            matchedIds={matchedAccountingIds}
            onSelectionChange={setSelectedAccountingIds}
            className="bg-card"
+           locale="es-ES" // Pass Spanish locale
+           currency="EUR" // Use Euro for example
           />
        </div>
 
@@ -168,18 +172,18 @@ export default function Home() {
         {/*
         <Separator className="my-8 w-full max-w-6xl" />
         <Card className="w-full max-w-6xl mb-8 shadow-md">
-           <CardHeader><CardTitle className="text-lg">Matched Transactions</CardTitle></CardHeader>
+           <CardHeader><CardTitle className="text-lg">Transacciones Conciliadas</CardTitle></CardHeader>
            <CardContent>
              {matchedPairs.length > 0 ? (
                <ul>
                  {matchedPairs.map((pair, index) => (
                    <li key={index} className="text-sm mb-1 p-2 border-b">
-                     Bank ID: {pair.bankTransactionId} &lt;--&gt; Accounting ID: {pair.accountingTransactionId}
+                     ID Banco: {pair.bankTransactionId} &lt;--&gt; ID Contabilidad: {pair.accountingTransactionId}
                    </li>
                  ))}
                </ul>
              ) : (
-               <p className="text-muted-foreground text-center">No transactions matched yet.</p>
+               <p className="text-muted-foreground text-center">Aún no hay transacciones conciliadas.</p>
              )}
            </CardContent>
          </Card>

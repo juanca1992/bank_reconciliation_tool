@@ -40,7 +40,7 @@ export function StatementUpload({ title, onFileUpload, className }: StatementUpl
       <CardContent>
         <div className="grid w-full max-w-sm items-center gap-2">
            <Label htmlFor={inputId} className="sr-only">
-             {title}
+             {title} {/* Label text is dynamic based on title prop */}
            </Label>
            <Input
               id={inputId}
@@ -49,11 +49,11 @@ export function StatementUpload({ title, onFileUpload, className }: StatementUpl
               className="cursor-pointer file:cursor-pointer file:text-primary file:font-medium"
               // Add specific accept types if needed, e.g., accept=".csv, application/vnd.ms-excel, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
            />
-          {fileName && <p className="text-sm text-muted-foreground mt-2">Selected: {fileName}</p>}
+          {fileName && <p className="text-sm text-muted-foreground mt-2">Seleccionado: {fileName}</p>}
         </div>
          {/* Optionally add an upload button if direct backend interaction is needed here */}
          {/* <Button className="mt-4">
-            <Upload className="mr-2 h-4 w-4" /> Upload
+            <Upload className="mr-2 h-4 w-4" /> Subir
          </Button> */}
       </CardContent>
     </Card>

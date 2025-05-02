@@ -7,8 +7,8 @@ import { Toaster } from "@/components/ui/toaster"; // Import Toaster
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
 export const metadata: Metadata = {
-  title: 'Bank Reconciliation Tool', // Updated title
-  description: 'Tool for reconciling bank and accounting statements.', // Updated description
+  title: 'Herramienta de Conciliación Bancaria', // Updated title to Spanish
+  description: 'Herramienta para conciliar extractos bancarios y contables.', // Updated description to Spanish
 };
 
 export default function RootLayout({
@@ -17,7 +17,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="es"> {/* Set language to Spanish */}
       <body className={`${inter.variable} font-sans antialiased`}>
         {children}
         <Toaster /> {/* Add Toaster here */}

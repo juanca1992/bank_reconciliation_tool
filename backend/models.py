@@ -1,53 +1,81 @@
+# backend/models.py
 from pydantic import BaseModel, Field
-from typing import List, Literal, Optional # Optional is needed for nullable fields
+from typing import List, Literal, Optional
+from datetime import date as py_date # Importar date
 
-# Represents a single transaction, matching src/types/index.ts
+# --- Modelos Base ---
+
 class Transaction(BaseModel):
     id: str
-    date: str # Keep as string for simplicity, consider date objects for real use
-    description: str
+    date: Optional[py_date] = None # Usar py_date aquí
+    description: Optional[str] = None
     amount: float
     type: Literal['bank', 'accounting']
 
-# Represents the structure for initial data load
-class InitialDataResponse(BaseModel):
-    bank_transactions: List[Transaction]
-    accounting_transactions: List[Transaction]
+class MatchedPair(BaseModel):
+    # Usaremos camelCase aquí para coincidir con lo que espera/envía el frontend
+    bankTransactionId: str
+    accountingTransactionId: str
 
-# Request body for manual reconciliation
+    # Configuración para permitir la población por nombre de campo o alias (Pydantic v2+)
+    # Si usas Pydantic v1, necesitarías 'allow_population_by_field_name = True' en una clase Config interna.
+    model_config = {
+        "populate_by_name": True
+    }
+
+# --- Modelos para Endpoints ---
+
+# GET /api/transactions/initial
+class InitialDataResponse(BaseModel):
+    bank_transactions: List[Transaction] = []
+    accounting_transactions: List[Transaction] = []
+
+# POST /api/transactions/upload/{tx_type}
+class UploadResponse(BaseModel):
+    filename: str
+    message: str
+    transaction_count: int
+    transactions: List[Transaction] # Incluir transacciones procesadas
+
+# POST /api/transactions/reconcile/manual (1 a 1)
 class ManualReconcileRequest(BaseModel):
     bank_transaction_id: str
     accounting_transaction_id: str
 
-# Represents a matched pair, matching src/types/index.ts
-class MatchedPair(BaseModel):
-    bankTransactionId: str = Field(..., alias="bankTransactionId") # Use alias for camelCase mapping
-    accountingTransactionId: str = Field(..., alias="accountingTransactionId") # Use alias for camelCase mapping
-
-    class Config:
-        populate_by_name = True # Allow using either snake_case or alias name
-
-# Response for successful manual reconciliation
 class ManualReconcileResponse(BaseModel):
     success: bool
     message: str
-    matched_pair: Optional[MatchedPair] = None # Use Optional for potentially null field
+    matched_pair: Optional[MatchedPair] = None
 
-# Request body for automatic reconciliation
-class AutoReconcileRequest(BaseModel):
-    bank_transactions: List[Transaction]
-    accounting_transactions: List[Transaction]
+# POST /api/transactions/reconcile/manual/many_to_one (1 Banco -> Múltiples Contables)
+class ManyToOneReconcileRequest(BaseModel):
+    bank_transaction_id: str
+    accounting_transaction_ids: List[str]
 
-# Response for automatic reconciliation
+class ManyToOneReconcileResponse(BaseModel):
+    success: bool
+    message: str
+    matched_pairs_created: List[MatchedPair] = []
+
+# POST /api/transactions/reconcile/manual/one_to_many (Múltiples Bancos -> 1 Contable)
+class OneToManyReconcileRequest(BaseModel):
+    accounting_transaction_id: str
+    bank_transaction_ids: List[str]
+
+class OneToManyReconcileResponse(BaseModel):
+    success: bool
+    message: str
+    matched_pairs_created: List[MatchedPair] = []
+
+# POST /api/transactions/reconcile/auto
 class AutoReconcileResponse(BaseModel):
     success: bool
     message: str
-    matched_pairs: List[MatchedPair] # Returns a list of newly matched pairs
+    matched_pairs: List[MatchedPair] = [] # Devuelve los *nuevos* pares encontrados
 
+# POST /api/admin/clear_data
+class ClearDataRequest(BaseModel): # Aunque se usa Body(embed=True), es bueno tener modelo
+     confirm: bool
 
-# Response for file upload (returns parsed transactions)
-class UploadResponse(BaseModel):
-    filename: str
-    message: str
-    transactions: List[Transaction] # Return parsed transactions
-
+class ClearDataResponse(BaseModel):
+     message: str

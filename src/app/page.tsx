@@ -7,18 +7,19 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import type { Transaction, MatchedPair, ManyToOneReconcileResponse } from '@/types'; // Asegúrate que ManyToOneReconcileResponse esté en @/types
-import { Link2, RefreshCw, Sparkles } from 'lucide-react';
+// Asegúrate que estos tipos (especialmente los nuevos de respuesta) estén definidos en @/types
+import type { Transaction, MatchedPair, ManualReconcileResponse, ManyToOneReconcileResponse, OneToManyReconcileResponse } from '@/types';
+import { Link2, RefreshCw, Sparkles, Download } from 'lucide-react'; // Añadido Download
 import {
   getInitialTransactions,
   uploadBankStatement,
   uploadAccountingStatement,
   reconcileManual,         // Para 1 a 1
   reconcileManualManyToOne, // Para 1 banco, muchos contables
+  reconcileManualOneToMany, // Para muchos bancos, 1 contable
   reconcileAuto,
   getMatchedPairs,
-  // Quité las funciones reset...
-} from '@/lib/api-client';
+} from '@/lib/api-client'; // Importar todas las funciones necesarias
 
 export default function Home() {
   const [bankTransactions, setBankTransactions] = useState<Transaction[]>([]);
@@ -26,23 +27,25 @@ export default function Home() {
   const [selectedBankIds, setSelectedBankIds] = useState<string[]>([]);
   const [selectedAccountingIds, setSelectedAccountingIds] = useState<string[]>([]);
   const [matchedPairs, setMatchedPairs] = useState<MatchedPair[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isAutoReconciling, setIsAutoReconciling] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // Loading general o para acciones manuales
+  const [isAutoReconciling, setIsAutoReconciling] = useState(false); // Loading específico para auto
   const [error, setError] = useState<string | null>(null);
 
   const { toast } = useToast();
 
-  // --- Fetch Initial Data (sin cambios) ---
+  // --- Fetch Initial Data ---
   const fetchInitialData = async () => {
     console.log("fetchInitialData: function starting");
     setIsLoading(true);
     setError(null);
     try {
-      const initialData = await getInitialTransactions();
+      const [initialData, initialMatched] = await Promise.all([
+        getInitialTransactions(),
+        getMatchedPairs()
+      ]);
       console.log("Initial data fetched:", initialData);
       setBankTransactions(initialData?.bank_transactions || []);
       setAccountingTransactions(initialData?.accounting_transactions || []);
-      const initialMatched = await getMatchedPairs();
       console.log("Initial matched pairs fetched:", initialMatched);
       setMatchedPairs(initialMatched || []);
       setSelectedBankIds([]);
@@ -50,7 +53,9 @@ export default function Home() {
     } catch (err) {
       console.error("Error fetching initial data:", err);
       const errorMsg = err instanceof Error ? err.message : "Error desconocido";
-      setError(`Error al cargar los datos iniciales: ${errorMsg}. Inténtalo de nuevo.`);
+      const displayError = `Error al cargar datos iniciales: ${errorMsg}. Inténtalo de nuevo.`;
+      setError(displayError);
+      toast({ title: "Error de Carga", description: displayError, variant: "destructive" });
     } finally {
       setIsLoading(false);
       console.log("fetchInitialData: function finished");
@@ -58,309 +63,214 @@ export default function Home() {
   };
 
   useEffect(() => {
+    console.log("Mount useEffect: fetching initial data");
     fetchInitialData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- File Upload Handlers (sin cambios) ---
+  // --- File Upload Handlers ---
   const handleBankFileUpload = async (file: File | null) => {
-    // ... (código sin cambios) ...
-     if (!file) return;
-    setIsLoading(true);
-    setError(null);
+    if (!file) return;
+    setIsLoading(true); setError(null);
     try {
       const response = await uploadBankStatement(file);
       console.log("Bank upload response:", response);
-      if (response && Array.isArray(response.transactions)) {
-        setBankTransactions(response.transactions || []);
-        toast({ title: "Extracto Bancario Subido", description: `${response.message}. ${response.transaction_count} transacciones cargadas.` });
-        setSelectedBankIds([]);
+      if (response?.transactions) {
+        setBankTransactions(response.transactions);
+        toast({ title: "Extracto Bancario Subido", description: `${response.message}. ${response.transaction_count} transacciones.` });
       } else {
-        console.warn("Bank upload response did not contain transactions array:", response);
-        toast({ title: "Extracto Bancario Procesado", description: response?.message ?? "Respuesta inesperada" });
+         toast({ title: "Extracto Bancario Procesado", description: response?.message ?? "Respuesta inesperada." });
+         if (response) await fetchInitialData(); // Recarga si fue ok pero sin datos?
       }
+      setSelectedBankIds([]);
     } catch (err) {
-        console.error("Error uploading bank statement:", err);
         const errorMessage = err instanceof Error ? err.message : "Error desconocido";
-        toast({ title: "Error al Subir", description: `Extracto bancario: ${errorMessage}`, variant: "destructive" });
+        toast({ title: "Error al Subir Banco", description: errorMessage, variant: "destructive" });
         setError(`Error al subir extracto bancario: ${errorMessage}`);
-    } finally {
-        setIsLoading(false);
-    }
+    } finally { setIsLoading(false); }
   };
 
   const handleAccountingFileUpload = async (file: File | null) => {
-    // ... (código sin cambios) ...
-    if (!file) return;
-    setIsLoading(true);
-    setError(null);
+      if (!file) return;
+      setIsLoading(true); setError(null);
     try {
       const response = await uploadAccountingStatement(file);
       console.log("Accounting upload response:", response);
-       if (response && Array.isArray(response.transactions)) {
-        setAccountingTransactions(response.transactions || []);
-        toast({ title: "Extracto Contable Subido", description: `${response.message}. ${response.transaction_count} transacciones cargadas.` });
-        setSelectedAccountingIds([]);
+      if (response?.transactions) {
+        setAccountingTransactions(response.transactions);
+        toast({ title: "Extracto Contable Subido", description: `${response.message}. ${response.transaction_count} transacciones.` });
       } else {
-         console.warn("Accounting upload response did not contain transactions array:", response);
-         toast({ title: "Extracto Contable Procesado", description: response?.message ?? "Respuesta inesperada" });
+        toast({ title: "Extracto Contable Procesado", description: response?.message ?? "Respuesta inesperada." });
+        if (response) await fetchInitialData();
       }
+      setSelectedAccountingIds([]);
     } catch (err) {
-        console.error("Error uploading accounting statement:", err);
         const errorMessage = err instanceof Error ? err.message : "Error desconocido";
-        toast({ title: "Error al Subir", description: `Extracto contable: ${errorMessage}`, variant: "destructive" });
+        toast({ title: "Error al Subir Contable", description: errorMessage, variant: "destructive" });
         setError(`Error al subir extracto contable: ${errorMessage}`);
-    } finally {
-        setIsLoading(false);
-    }
+    } finally { setIsLoading(false); }
   };
 
-  // *** CORREGIDO: Handler Manual Inteligente ***
+  // --- Combined Manual Match Handler ---
   const handleManualMatch = async () => {
     const numBankSelected = selectedBankIds.length;
     const numAccSelected = selectedAccountingIds.length;
+    let scenario: '1-1' | '1-ManyAcc' | 'ManyBank-1' | 'Invalid' = 'Invalid';
+    if (numBankSelected === 1 && numAccSelected === 1) scenario = '1-1';
+    else if (numBankSelected === 1 && numAccSelected > 1) scenario = '1-ManyAcc';
+    else if (numBankSelected > 1 && numAccSelected === 1) scenario = 'ManyBank-1';
 
-    // Validación general: exactamente 1 bancaria y al menos 1 contable
-    if (numBankSelected !== 1 || numAccSelected === 0) {
-      toast({
-        title: "Error de Selección Manual",
-        description: "Debe seleccionar exactamente UNA transacción bancaria y al menos UNA transacción contable.",
-        variant: "destructive",
-      });
+    if (scenario === 'Invalid') {
+      toast({ title: "Error Selección Manual", description: "Selección inválida. Elija: (1 Banco y 1 Contable) O (1 Banco y Varios Contables) O (Varios Bancos y 1 Contable).", variant: "destructive" });
       return;
     }
 
-    const bankTxId = selectedBankIds[0]; // Siempre el único seleccionado
-
-    setIsLoading(true);
-    setError(null);
-
+    setIsLoading(true); setError(null);
     try {
-      // Decidir qué API llamar basado en cuántos contables se seleccionaron
-      if (numAccSelected === 1) {
-        // --- Caso 1 a 1 ---
-        const accTxId = selectedAccountingIds[0];
-        console.log(`Attempting manual match (1-1): Bank ID ${bankTxId}, Accounting ID ${accTxId}`);
-        const response = await reconcileManual(bankTxId, accTxId);
-        console.log("Manual reconcile (1-1) response:", response);
+      let response: ManualReconcileResponse | ManyToOneReconcileResponse | OneToManyReconcileResponse | null = null;
+      let newMatchedPairs: MatchedPair[] = [];
+      let message = ""; let success = false;
 
-        if (response.success && response.matched_pair) {
-          setMatchedPairs(prev => [...prev, response.matched_pair!]);
-          setBankTransactions(prev => prev.filter(tx => tx.id !== bankTxId));
-          setAccountingTransactions(prev => prev.filter(tx => tx.id !== accTxId));
-          toast({ title: "Conciliación Manual (1-1) Exitosa", description: response.message });
-        } else {
-          throw new Error(response.message || "No se pudo completar la conciliación (1-1).");
+      switch (scenario) {
+        case '1-1': {
+          const bankTxId = selectedBankIds[0]; const accTxId = selectedAccountingIds[0];
+          console.log(`API Call (${scenario}): B:${bankTxId}, A:${accTxId}`);
+          response = await reconcileManual(bankTxId, accTxId);
+          if (response?.success && response.matched_pair) { newMatchedPairs = [response.matched_pair]; success = true; }
+          message = response?.message || `Error ${scenario}.`; break;
         }
-
-      } else {
-        // --- Caso 1 Banco a Muchos Contables ---
-        const accTxIds = selectedAccountingIds; // La lista completa
-        console.log(`Attempting manual match (1-Many): Bank ID ${bankTxId}, Accounting IDs ${accTxIds.join(', ')}`);
-        const response = await reconcileManualManyToOne(bankTxId, accTxIds); // Llama a la API correcta
-        console.log("Manual reconcile (1-Many) response:", response);
-
-        if (response.success && response.matched_pairs_created && response.matched_pairs_created.length > 0) {
-          setMatchedPairs(prev => [...prev, ...response.matched_pairs_created]);
-          setBankTransactions(prev => prev.filter(tx => tx.id !== bankTxId));
-          // Quitar todos los contables involucrados
-          const matchedAccIdsSet = new Set(accTxIds);
-          setAccountingTransactions(prev => prev.filter(tx => !matchedAccIdsSet.has(tx.id)));
-          toast({ title: "Conciliación Manual (1-Muchos) Exitosa", description: response.message });
-        } else {
-           throw new Error(response.message || "No se pudo completar la conciliación (1-Muchos).");
+        case '1-ManyAcc': {
+          const bankTxId = selectedBankIds[0]; const accTxIds = selectedAccountingIds;
+          console.log(`API Call (${scenario}): B:${bankTxId}, A:[${accTxIds.join(',')}]`);
+          response = await reconcileManualManyToOne(bankTxId, accTxIds);
+          if (response?.success && response.matched_pairs_created) { newMatchedPairs = response.matched_pairs_created; success = true; }
+          message = response?.message || `Error ${scenario}.`; break;
+        }
+        case 'ManyBank-1': {
+          const accTxId = selectedAccountingIds[0]; const bankTxIds = selectedBankIds;
+          console.log(`API Call (${scenario}): B:[${bankTxIds.join(',')}], A:${accTxId}`);
+          response = await reconcileManualOneToMany(accTxId, bankTxIds);
+          if (response?.success && response.matched_pairs_created) { newMatchedPairs = response.matched_pairs_created; success = true; }
+          message = response?.message || `Error ${scenario}.`; break;
         }
       }
 
-      // Si cualquiera de las llamadas tuvo éxito, limpiar selecciones
-      setSelectedBankIds([]);
-      setSelectedAccountingIds([]);
-
+      if (success && newMatchedPairs.length > 0) {
+        setMatchedPairs(prev => [...prev, ...newMatchedPairs]);
+        const justMatchedBankIds = new Set(newMatchedPairs.map(p => p.bankTransactionId));
+        const justMatchedAccIds = new Set(newMatchedPairs.map(p => p.accountingTransactionId));
+        setBankTransactions(prev => prev.filter(tx => !justMatchedBankIds.has(tx.id)));
+        setAccountingTransactions(prev => prev.filter(tx => !justMatchedAccIds.has(tx.id)));
+        setSelectedBankIds([]); setSelectedAccountingIds([]);
+        toast({ title: `Conciliación Manual Exitosa (${scenario})`, description: message });
+      } else { throw new Error(message); }
     } catch (err) {
-      // Captura errores de CUALQUIERA de las llamadas API o del throw new Error
-      console.error("Error during manual reconciliation:", err);
-      const errorMessage = err instanceof Error ? err.message : "Error desconocido al conciliar manualmente.";
-      toast({ title: "Error en Conciliación Manual", description: errorMessage, variant: "destructive" });
-      setError(`Error en conciliación manual: ${errorMessage}`);
-    } finally {
-      setIsLoading(false);
-    }
+      const errorMessage = err instanceof Error ? err.message : "Error desconocido.";
+      toast({ title: "Error Conciliación Manual", description: errorMessage, variant: "destructive" });
+      setError(`Error conciliación manual: ${errorMessage}`);
+    } finally { setIsLoading(false); }
   };
 
-
-  // --- Automatic Match Handler (sin cambios) ---
+  // --- Automatic Match Handler ---
    const handleAutoMatch = async () => {
-    // ... (código sin cambios) ...
      if (bankTransactions.length === 0 || accountingTransactions.length === 0) {
-       toast({
-           title: "Conciliación Automática",
-           description: "Se requieren transacciones pendientes en ambos extractos (bancario y contable) para iniciar.",
-           variant: "default", // o "warning"
-         });
+       toast({ title: "Conciliación Automática", description: "Se requieren transacciones pendientes.", variant: "default" });
        return;
      }
-     setIsAutoReconciling(true);
-     setError(null);
+     setIsAutoReconciling(true); setError(null);
      try {
        console.log("Attempting automatic reconcile...");
        const response = await reconcileAuto();
        console.log("Auto reconcile response:", response);
-       if (response.success) {
-         if (response.matched_pairs && response.matched_pairs.length > 0) {
-           console.log("New matches found by auto reconcile:", response.matched_pairs);
+       if (response?.success) {
+         if (response.matched_pairs?.length > 0) {
            setMatchedPairs(prev => [...prev, ...response.matched_pairs]);
            const newlyMatchedBankIds = new Set(response.matched_pairs.map(p => p.bankTransactionId));
            const newlyMatchedAccIds = new Set(response.matched_pairs.map(p => p.accountingTransactionId));
            setBankTransactions(prev => prev.filter(tx => !newlyMatchedBankIds.has(tx.id)));
            setAccountingTransactions(prev => prev.filter(tx => !newlyMatchedAccIds.has(tx.id)));
-           setSelectedBankIds([]);
-           setSelectedAccountingIds([]);
-           toast({
-             title: "Conciliación Automática Completada",
-             description: response.message,
-             variant: "default",
-             className: "bg-primary text-primary-foreground border-primary",
-           });
+           setSelectedBankIds([]); setSelectedAccountingIds([]);
+           toast({ title: "Conciliación Automática Completada", description: response.message, className: "bg-primary text-primary-foreground border-primary" });
          } else {
-           console.log("No new matches found by auto reconcile.");
-           toast({
-             title: "Conciliación Automática Completada",
-             description: response.message,
-             variant: "default",
-           });
+           toast({ title: "Conciliación Automática Completada", description: response.message ?? "No se encontraron nuevas coincidencias.", variant: "default" });
          }
        } else {
-         const errorDesc = response.message || "No se pudo completar la conciliación automática.";
-         console.error("Auto reconcile error:", errorDesc);
-         toast({
-           title: "Error de Conciliación Automática",
-           description: errorDesc,
-           variant: "destructive",
-         });
-         setError(errorDesc);
+         const errorDesc = response?.message || "No se pudo completar.";
+         toast({ title: "Error Conciliación Automática", description: errorDesc, variant: "destructive" }); setError(errorDesc);
        }
      } catch (err) {
-       console.error("Error during automatic reconciliation call:", err);
-       const errorMessage = err instanceof Error ? err.message : "Error desconocido al ejecutar la conciliación automática.";
-       toast({
-         title: "Error en Conciliación Automática",
-         description: errorMessage,
-         variant: "destructive",
-       });
-       setError(`Error en conciliación automática: ${errorMessage}`);
-     } finally {
-       setIsAutoReconciling(false);
-     }
+       const errorMessage = err instanceof Error ? err.message : "Error desconocido.";
+       toast({ title: "Error Conciliación Automática", description: errorMessage, variant: "destructive" }); setError(`Error auto: ${errorMessage}`);
+     } finally { setIsAutoReconciling(false); }
    };
+
+   // --- Download Handler ---
+   const handleDownload = () => {
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        const downloadUrl = `${baseUrl}/api/reconciliation/download`;
+        console.log(`Initiating download from: ${downloadUrl}`);
+        toast({ title: "Descarga Iniciada", description: "Preparando archivo Excel..." });
+        window.open(downloadUrl, '_blank'); // Abre en nueva pestaña para iniciar descarga
+   };
+
 
   // --- RENDER JSX ---
   return (
      <main className="flex min-h-screen flex-col items-center p-4 md:p-12 bg-secondary">
         <h1 className="text-3xl font-bold mb-8 text-primary">Herramienta de Conciliación Bancaria</h1>
 
-        {/* Loading and Error States (sin cambios) */}
         {(isLoading || isAutoReconciling) && (
-          <div className="fixed inset-0 bg-background/80 flex items-center justify-center z-50">
+          <div className="fixed inset-0 bg-background/80 flex items-center justify-center z-50 backdrop-blur-sm">
               <RefreshCw className="h-8 w-8 animate-spin text-primary" />
-              <span className="ml-3 text-lg text-foreground">{isAutoReconciling ? 'Conciliando automáticamente...' : 'Cargando...'}</span>
+              <span className="ml-3 text-lg font-semibold text-foreground">{isAutoReconciling ? 'Conciliando Automáticamente...' : 'Procesando...'}</span>
           </div>
         )}
         {error && (
           <Card className="w-full max-w-6xl mb-8 bg-destructive/10 border-destructive text-destructive-foreground p-4">
             <CardHeader><CardTitle className="text-lg text-destructive">Error</CardTitle></CardHeader>
-            <CardContent>
-                <p>{error}</p>
-                <Button variant="outline" size="sm" onClick={fetchInitialData} className="mt-4 border-destructive text-destructive hover:bg-destructive/10">Reintentar Carga Inicial</Button>
-                <Button variant="ghost" size="sm" onClick={() => setError(null)} className="mt-4 ml-2 text-muted-foreground">Descartar</Button>
+            <CardContent><p>{error}</p>
+              <Button variant="outline" size="sm" onClick={fetchInitialData} className="mt-4 border-destructive text-destructive hover:bg-destructive/10">Reintentar Carga</Button>
+              <Button variant="ghost" size="sm" onClick={() => setError(null)} className="mt-4 ml-2 text-muted-foreground">Descartar</Button>
             </CardContent>
           </Card>
         )}
 
-        {/* Upload Section (sin cambios) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-6xl mb-8">
-          {/* ... StatementUpload components ... */}
-           <StatementUpload
-            title="Subir Extracto Bancario"
-            onFileUpload={handleBankFileUpload}
-            className="bg-card"
-            disabled={isLoading || isAutoReconciling}
-          />
-          <StatementUpload
-            title="Subir Extracto del Sistema Contable"
-            onFileUpload={handleAccountingFileUpload}
-            className="bg-card"
-            disabled={isLoading || isAutoReconciling}
-          />
+           <StatementUpload title="Subir Extracto Bancario (.csv)" onFileUpload={handleBankFileUpload} className="bg-card" disabled={isLoading || isAutoReconciling} />
+           <StatementUpload title="Subir Auxiliar Contable (.xlsx)" onFileUpload={handleAccountingFileUpload} className="bg-card" disabled={isLoading || isAutoReconciling} />
         </div>
-
         <Separator className="my-8 w-full max-w-6xl" />
 
-        {/* Matching Controls */}
         <Card className="w-full max-w-6xl mb-8 shadow-md">
-          <CardHeader>
-              <CardTitle className="text-lg">Iniciar Conciliación</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle className="text-lg">Iniciar Conciliación</CardTitle></CardHeader>
           <CardContent className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-4">
-            {/* *** Botón Manual ÚNICO y CORREGIDO *** */}
-            <Button
-              onClick={handleManualMatch} // Llama al handler inteligente
-              // Habilitado si hay 1 banco y al menos 1 contable seleccionados
-              disabled={isLoading || isAutoReconciling || selectedBankIds.length !== 1 || selectedAccountingIds.length === 0}
-              className="bg-accent text-accent-foreground hover:bg-accent/90"
-              title="Seleccione UNA transacción bancaria y UNA O MÁS contables para activar"
-            >
-              <Link2 className="mr-2 h-4 w-4" />
-              Conciliar Manualmente (Seleccionados)
+            <Button onClick={handleManualMatch} disabled={ isLoading || isAutoReconciling || selectedBankIds.length === 0 || selectedAccountingIds.length === 0 || (selectedBankIds.length > 1 && selectedAccountingIds.length > 1) } className="bg-accent text-accent-foreground hover:bg-accent/90" title="Seleccione (1 Banco y 1+ Contable) O (1+ Banco y 1 Contable)">
+              <Link2 className="mr-2 h-4 w-4" /> Conciliar Manualmente
             </Button>
-
-            {/* Botón Automático (sin cambios) */}
-            <Button
-              onClick={handleAutoMatch}
-              disabled={isLoading || isAutoReconciling || bankTransactions.length === 0 || accountingTransactions.length === 0}
-              className="bg-primary text-primary-foreground hover:bg-primary/90"
-              title="Conciliar automáticamente las transacciones pendientes"
-            >
-                <Sparkles className="mr-2 h-4 w-4" />
-                Conciliar Automáticamente
+            <Button onClick={handleAutoMatch} disabled={isLoading || isAutoReconciling || bankTransactions.length === 0 || accountingTransactions.length === 0} className="bg-primary text-primary-foreground hover:bg-primary/90" title="Conciliar automáticamente">
+                <Sparkles className="mr-2 h-4 w-4" /> Conciliar Auto
             </Button>
-
-            {/* Botón de Reset Eliminado */}
-
+            <Button onClick={handleDownload} variant="outline" disabled={isLoading || isAutoReconciling || (bankTransactions.length === 0 && accountingTransactions.length === 0 && matchedPairs.length === 0)} title="Descargar estado actual">
+                <Download className="mr-2 h-4 w-4" /> Descargar Reporte
+            </Button>
           </CardContent>
         </Card>
 
-        {/* Statement Tables Section (sin cambios) */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full max-w-6xl">
-           <StatementTable
-            title="Transacciones Bancarias (Pendientes)"
-            transactions={bankTransactions}
-            selectedIds={selectedBankIds}
-            onSelectionChange={setSelectedBankIds}
-            className="bg-card"
-            locale="es-CO" // Cambiado a es-CO para formato numérico
-          />
-          <StatementTable
-            title="Transacciones Contables (Pendientes)"
-            transactions={accountingTransactions}
-            selectedIds={selectedAccountingIds}
-            onSelectionChange={setSelectedAccountingIds}
-            className="bg-card"
-            locale="es-CO" // Cambiado a es-CO para formato numérico
-          />
+           <StatementTable title={`Bancarias (${bankTransactions.length} Pend.)`} transactions={bankTransactions} selectedIds={selectedBankIds} onSelectionChange={setSelectedBankIds} className="bg-card" locale="es-CO" allowMultipleSelection={true} />
+           <StatementTable title={`Contables (${accountingTransactions.length} Pend.)`} transactions={accountingTransactions} selectedIds={selectedAccountingIds} onSelectionChange={setSelectedAccountingIds} className="bg-card" locale="es-CO" allowMultipleSelection={true} />
         </div>
 
-        {/* Display matched pairs (sin cambios) */}
         {matchedPairs.length > 0 && (
           <>
-            {/* ... Card para mostrar conciliados ... */}
              <Separator className="my-8 w-full max-w-6xl" />
             <Card className="w-full max-w-6xl mb-8 shadow-md">
-              <CardHeader><CardTitle className="text-lg">Transacciones Conciliadas</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-lg">Transacciones Conciliadas ({matchedPairs.length} Pares)</CardTitle></CardHeader>
               <CardContent>
-                  <ul className="max-h-48 overflow-y-auto text-sm space-y-1">
+                  <ul className="max-h-60 overflow-y-auto text-sm space-y-1 divide-y divide-border">
                     {matchedPairs.map((pair, index) => (
-                      <li key={`${pair.bankTransactionId}-${pair.accountingTransactionId}-${index}`} className="p-2 border-b text-muted-foreground">
-                        Conciliado: Banco ID <code className="bg-muted px-1 rounded">{pair.bankTransactionId}</code> con Contabilidad ID <code className="bg-muted px-1 rounded">{pair.accountingTransactionId}</code>
+                      <li key={`${pair.bankTransactionId}-${pair.accountingTransactionId}-${index}`} className="p-2 text-muted-foreground hover:bg-muted/50">
+                        Conciliado: Banco <code className="bg-muted px-1 rounded text-foreground">{pair.bankTransactionId}</code> con Contable <code className="bg-muted px-1 rounded text-foreground">{pair.accountingTransactionId}</code>
                       </li>
                     ))}
                   </ul>

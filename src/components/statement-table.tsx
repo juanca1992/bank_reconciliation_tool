@@ -17,7 +17,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { ClientFormattedCurrency } from '@/components/ui/client-formatted-currency'; // Import the new component
+import { ClientFormattedNumber } from '@/components/ui/client-formatted-number'; // Import the new component
 import { cn } from '@/lib/utils';
 import type { Transaction } from '@/types'; // Ensure path is correct
 
@@ -29,7 +29,7 @@ interface StatementTableProps {
   onSelectionChange: (selectedIds: string[]) => void;
   className?: string;
   locale?: string; // Added locale prop
-  currency?: string; // Added currency prop
+  currency?: string; // Kept currency prop if needed elsewhere, but not used for formatting here
 }
 
 export function StatementTable({
@@ -39,8 +39,7 @@ export function StatementTable({
   matchedIds,
   onSelectionChange,
   className,
-  locale = 'en-US', // Default locale
-  currency = 'USD', // Default currency
+  locale = 'es-ES', // Default locale set to Spanish
 }: StatementTableProps) {
   const [filter, setFilter] = useState('');
   const [sortColumn, setSortColumn] = useState<keyof Transaction | null>(null);
@@ -97,9 +96,9 @@ export function StatementTable({
     return 0;
   });
 
-  const isAllSelected = transactions.length > 0 && transactions.every(t => matchedIds.includes(t.id) || selectedIds.includes(t.id)) && transactions.filter(t => !matchedIds.includes(t.id)).length > 0;
-
-  const isIndeterminate = selectedIds.length > 0 && !isAllSelected && selectedIds.length < transactions.filter(t => !matchedIds.includes(t.id)).length;
+  const selectableTransactionsCount = transactions.filter(t => !matchedIds.includes(t.id)).length;
+  const isAllSelected = selectableTransactionsCount > 0 && selectedIds.length === selectableTransactionsCount;
+  const isIndeterminate = selectedIds.length > 0 && selectedIds.length < selectableTransactionsCount;
 
 
   return (
@@ -125,7 +124,7 @@ export function StatementTable({
                   checked={isAllSelected ? true : (isIndeterminate ? 'indeterminate' : false)}
                   onCheckedChange={handleSelectAll}
                   aria-label="Seleccionar todo" // Translated aria-label
-                  disabled={transactions.every(t => matchedIds.includes(t.id))} // Disable if all are matched
+                  disabled={selectableTransactionsCount === 0} // Disable if no selectable items
                 />
               </TableHead>
               <TableHead onClick={() => handleSort('date')}>
@@ -158,8 +157,9 @@ export function StatementTable({
                     key={transaction.id}
                     data-state={isSelected ? 'selected' : undefined}
                     className={cn(
-                      isMatched ? 'bg-accent/20 hover:bg-accent/30' : '',
-                      isSelected && !isMatched ? 'bg-secondary' : ''
+                      isMatched ? 'bg-accent/20 hover:bg-accent/30 text-muted-foreground' : '', // Style matched rows
+                      isSelected && !isMatched ? 'bg-secondary' : '', // Style selected rows
+                      'hover:bg-muted/50' // Default hover style
                     )}
                   >
                     <TableCell padding="checkbox">
@@ -173,15 +173,15 @@ export function StatementTable({
                     <TableCell className="whitespace-nowrap">{transaction.date}</TableCell>
                     <TableCell>{transaction.description}</TableCell>
                     <TableCell className="text-right whitespace-nowrap">
-                      {/* Use the client-side formatting component with passed locale and currency */}
-                      <ClientFormattedCurrency amount={transaction.amount} currency={currency} locale={locale} />
+                       {/* Use the client-side number formatting component */}
+                       <ClientFormattedNumber amount={transaction.amount} locale={locale} />
                     </TableCell>
                   </TableRow>
                  )
               })
             ) : (
               <TableRow>
-                <TableCell colSpan={4} className="h-24 text-center">
+                <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
                   No se encontraron transacciones. {/* Translated message */}
                 </TableCell>
               </TableRow>

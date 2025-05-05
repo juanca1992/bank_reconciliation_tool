@@ -1,5 +1,6 @@
-from pydantic import BaseModel
-from typing import List, Literal
+
+from pydantic import BaseModel, Field
+from typing import List, Literal, Optional # Optional is needed for nullable fields
 
 # Represents a single transaction, matching src/types/index.ts
 class Transaction(BaseModel):
@@ -21,16 +22,31 @@ class ManualReconcileRequest(BaseModel):
 
 # Represents a matched pair, matching src/types/index.ts
 class MatchedPair(BaseModel):
-    bankTransactionId: str # Use camelCase matching frontend type
-    accountingTransactionId: str # Use camelCase matching frontend type
+    bankTransactionId: str = Field(..., alias="bankTransactionId") # Use alias for camelCase mapping
+    accountingTransactionId: str = Field(..., alias="accountingTransactionId") # Use alias for camelCase mapping
 
-# Response for successful reconciliation
-class ReconcileResponse(BaseModel):
+    class Config:
+        populate_by_name = True # Allow using either snake_case or alias name
+
+# Response for successful manual reconciliation
+class ManualReconcileResponse(BaseModel):
     success: bool
     message: str
-    matched_pair: MatchedPair | None = None # Return the pair if successful
+    matched_pair: Optional[MatchedPair] = None # Use Optional for potentially null field
 
-# Response for file upload (could return parsed transactions)
+# Request body for automatic reconciliation
+class AutoReconcileRequest(BaseModel):
+    bank_transactions: List[Transaction]
+    accounting_transactions: List[Transaction]
+
+# Response for automatic reconciliation
+class AutoReconcileResponse(BaseModel):
+    success: bool
+    message: str
+    matched_pairs: List[MatchedPair] # Returns a list of newly matched pairs
+
+
+# Response for file upload (returns parsed transactions)
 class UploadResponse(BaseModel):
     filename: str
     message: str

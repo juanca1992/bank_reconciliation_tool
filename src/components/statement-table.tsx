@@ -1,4 +1,3 @@
-
 "use client";
 
 import type * as React from 'react';
@@ -23,12 +22,11 @@ import type { Transaction } from '@/types';
 
 interface StatementTableProps {
   title: string;
-  transactions: Transaction[]; // These are now expected to be *unmatched* transactions
+  transactions: Transaction[]; // These are expected to be *unmatched* transactions
   selectedIds: string[];
-  // matchedIds prop is removed as parent component now filters data
   onSelectionChange: (selectedIds: string[]) => void;
   className?: string;
-  locale?: string; // Added locale prop
+  locale?: string;
 }
 
 export function StatementTable({
@@ -92,6 +90,7 @@ export function StatementTable({
        return sortDirection === 'asc' ? String(aValue).localeCompare(String(bValue)) : String(bValue).localeCompare(String(aValue));
      }
 
+    // Default string comparison for description
     if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
     if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
     return 0;
@@ -105,7 +104,7 @@ export function StatementTable({
   return (
     <Card className={cn("w-full shadow-md", className)}>
       <CardHeader>
-        <CardTitle className="text-lg">{title}</CardTitle>
+        <CardTitle className="text-lg">{title}</CardTitle> {/* Title now comes from props */}
          <div className="flex items-center gap-2 pt-2">
              <Filter className="h-4 w-4 text-muted-foreground" />
              <Input
@@ -120,7 +119,7 @@ export function StatementTable({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead padding="checkbox">
+              <TableHead className="w-[40px] px-2"> {/* Adjusted padding/width via className */}
                 <Checkbox
                   checked={isAllSelected ? true : (isIndeterminate ? 'indeterminate' : false)}
                   onCheckedChange={handleSelectAll}
@@ -129,19 +128,19 @@ export function StatementTable({
                 />
               </TableHead>
               <TableHead onClick={() => handleSort('date')}>
-                 <Button variant="ghost" size="sm" className="px-2 py-1 h-auto">
+                 <Button variant="ghost" size="sm" className="px-2 py-1 h-auto -ml-2"> {/* Reduced margin */}
                   Fecha
                   <ArrowUpDown className="ml-2 h-3 w-3" />
                  </Button>
               </TableHead>
               <TableHead onClick={() => handleSort('description')}>
-                 <Button variant="ghost" size="sm" className="px-2 py-1 h-auto">
+                 <Button variant="ghost" size="sm" className="px-2 py-1 h-auto -ml-2"> {/* Reduced margin */}
                   Descripción
                   <ArrowUpDown className="ml-2 h-3 w-3" />
                   </Button>
               </TableHead>
               <TableHead onClick={() => handleSort('amount')} className="text-right">
-                 <Button variant="ghost" size="sm" className="px-2 py-1 h-auto">
+                 <Button variant="ghost" size="sm" className="px-2 py-1 h-auto -ml-2"> {/* Reduced margin */}
                   Monto
                   <ArrowUpDown className="ml-2 h-3 w-3" />
                  </Button>
@@ -162,7 +161,7 @@ export function StatementTable({
                     )}
                     onClick={() => handleRowSelect(transaction.id, !isSelected)} // Allow clicking row to select/deselect
                   >
-                    <TableCell padding="checkbox">
+                    <TableCell className="w-[40px] px-2"> {/* Adjusted padding/width via className */}
                       <Checkbox
                         checked={isSelected}
                         onCheckedChange={(checked) => handleRowSelect(transaction.id, checked)}
@@ -181,7 +180,7 @@ export function StatementTable({
             ) : (
               <TableRow>
                 <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
-                  No se encontraron transacciones pendientes o que coincidan con el filtro.
+                  {filter ? 'No se encontraron transacciones que coincidan con el filtro.' : 'No hay transacciones pendientes.'}
                 </TableCell>
               </TableRow>
             )}
@@ -191,3 +190,4 @@ export function StatementTable({
     </Card>
   );
 }
+

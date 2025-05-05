@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -9,12 +8,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import type { Transaction, MatchedPair } from '@/types';
-import { Link2, RefreshCw } from 'lucide-react';
+import { Link2, RefreshCw, Sparkles } from 'lucide-react'; // Added Sparkles icon
 import {
   getInitialTransactions,
   uploadBankStatement,
   uploadAccountingStatement,
   reconcileManual,
+  reconcileAuto, // Import the new auto reconcile function
   getMatchedPairs,
 } from '@/lib/api-client'; // Import API client functions
 
@@ -24,7 +24,8 @@ export default function Home() {
   const [selectedBankIds, setSelectedBankIds] = useState<string[]>([]);
   const [selectedAccountingIds, setSelectedAccountingIds] = useState<string[]>([]);
   const [matchedPairs, setMatchedPairs] = useState<MatchedPair[]>([]);
-  const [isLoading, setIsLoading] = useState(true); // Loading state
+  const [isLoading, setIsLoading] = useState(true); // Loading state for initial load/manual
+  const [isAutoReconciling, setIsAutoReconciling] = useState(false); // Separate loading state for auto
   const [error, setError] = useState<string | null>(null); // Error state
 
   const { toast } = useToast();
@@ -37,7 +38,9 @@ export default function Home() {
       const initialData = await getInitialTransactions();
       setBankTransactions(initialData.bank_transactions || []);
       setAccountingTransactions(initialData.accounting_transactions || []);
-      // Optionally fetch already matched pairs if needed on initial load
+      // Reset matched pairs on initial fetch or refresh if desired
+      setMatchedPairs([]);
+      // Fetch previously matched pairs if needed
       // const initialMatched = await getMatchedPairs();
       // setMatchedPairs(initialMatched || []);
     } catch (err) {
@@ -61,11 +64,10 @@ export default function Home() {
   // --- File Upload Handlers ---
   const handleBankFileUpload = async (file: File | null) => {
     if (!file) return;
-    setIsLoading(true); // Consider separate loading states per upload if needed
+    setIsLoading(true);
     try {
       const response = await uploadBankStatement(file);
       toast({ title: "Extracto Bancario Subido", description: response.message });
-      // Add newly uploaded transactions to the existing list
       setBankTransactions(prev => [...prev, ...response.transactions]);
     } catch (err) {
        const errorMessage = err instanceof Error ? err.message : "Error desconocido al subir el archivo.";
@@ -94,7 +96,7 @@ export default function Home() {
   const handleManualMatch = async () => {
     if (selectedBankIds.length !== 1 || selectedAccountingIds.length !== 1) {
       toast({
-        title: "Error de Conciliación",
+        title: "Error de Conciliación Manual",
         description: "Por favor, seleccione exactamente una transacción de cada extracto para conciliar.",
         variant: "destructive",
       });
@@ -121,23 +123,22 @@ export default function Home() {
         setSelectedAccountingIds([]);
 
         toast({
-          title: "Conciliación Exitosa",
+          title: "Conciliación Manual Exitosa",
           description: response.message,
           variant: "default",
           className: "bg-accent text-accent-foreground border-accent",
         });
       } else {
-        // Handle potential backend failure message even if success=false isn't expected here
          toast({
-           title: "Error de Conciliación",
+           title: "Error de Conciliación Manual",
            description: response.message || "No se pudo completar la conciliación.",
            variant: "destructive",
          });
       }
     } catch (err) {
-       const errorMessage = err instanceof Error ? err.message : "Error desconocido al conciliar.";
+       const errorMessage = err instanceof Error ? err.message : "Error desconocido al conciliar manualmente.";
        toast({
-         title: "Error en la Conciliación",
+         title: "Error en Conciliación Manual",
          description: errorMessage,
          variant: "destructive",
        });
@@ -146,19 +147,71 @@ export default function Home() {
     }
   };
 
-  // Get flat lists of matched IDs for easy lookup in tables (though now handled by filtering state)
-  // const matchedBankIds = matchedPairs.map(p => p.bankTransactionId);
-  // const matchedAccountingIds = matchedPairs.map(p => p.accountingTransactionId);
+  // --- Automatic Match Handler ---
+   const handleAutoMatch = async () => {
+      if (bankTransactions.length === 0 || accountingTransactions.length === 0) {
+        toast({
+           title: "Conciliación Automática",
+           description: "Se requieren transacciones pendientes en ambos extractos para iniciar la conciliación automática.",
+           variant: "default",
+         });
+        return;
+      }
+
+      setIsAutoReconciling(true);
+      try {
+        // Pass the current lists of unmatched transactions to the backend
+        const response = await reconcileAuto(bankTransactions, accountingTransactions);
+
+        if (response.success) {
+          // Update matched pairs state with newly found matches
+          setMatchedPairs(prev => [...prev, ...response.matched_pairs]);
+
+          // Update the bank and accounting transaction lists to remove the newly matched ones
+          const newlyMatchedBankIds = new Set(response.matched_pairs.map(p => p.bankTransactionId));
+          const newlyMatchedAccIds = new Set(response.matched_pairs.map(p => p.accountingTransactionId));
+
+          setBankTransactions(prev => prev.filter(tx => !newlyMatchedBankIds.has(tx.id)));
+          setAccountingTransactions(prev => prev.filter(tx => !newlyMatchedAccIds.has(tx.id)));
+
+          // Clear selections
+          setSelectedBankIds([]);
+          setSelectedAccountingIds([]);
+
+          toast({
+            title: "Conciliación Automática Completada",
+            description: response.message,
+            variant: "default", // Or a success variant if you have one
+            className: "bg-primary text-primary-foreground border-primary",
+          });
+        } else {
+           toast({
+             title: "Error de Conciliación Automática",
+             description: response.message || "No se pudo completar la conciliación automática.",
+             variant: "destructive",
+           });
+        }
+      } catch (err) {
+         const errorMessage = err instanceof Error ? err.message : "Error desconocido al ejecutar la conciliación automática.";
+         toast({
+           title: "Error en Conciliación Automática",
+           description: errorMessage,
+           variant: "destructive",
+         });
+      } finally {
+         setIsAutoReconciling(false);
+      }
+    };
 
   return (
     <main className="flex min-h-screen flex-col items-center p-4 md:p-12 bg-secondary">
        <h1 className="text-3xl font-bold mb-8 text-primary">Herramienta de Conciliación Bancaria</h1>
 
        {/* Loading and Error States */}
-       {isLoading && (
+       {(isLoading || isAutoReconciling) && (
          <div className="fixed inset-0 bg-background/80 flex items-center justify-center z-50">
             <RefreshCw className="h-8 w-8 animate-spin text-primary" />
-            <span className="ml-3 text-lg text-foreground">Cargando...</span>
+            <span className="ml-3 text-lg text-foreground">{isAutoReconciling ? 'Conciliando automáticamente...' : 'Cargando...'}</span>
          </div>
        )}
        {error && (
@@ -195,58 +248,67 @@ export default function Home() {
         {/* Matching Controls */}
        <Card className="w-full max-w-6xl mb-8 shadow-md">
           <CardHeader>
-             <CardTitle className="text-lg">Conciliación Manual</CardTitle>
+             <CardTitle className="text-lg">Iniciar Conciliación</CardTitle>
           </CardHeader>
-          <CardContent className="flex items-center justify-center">
+          <CardContent className="flex flex-col sm:flex-row items-center justify-center gap-4">
+             {/* Manual Match Button */}
              <Button
                onClick={handleManualMatch}
-               disabled={isLoading || selectedBankIds.length !== 1 || selectedAccountingIds.length !== 1}
+               disabled={isLoading || isAutoReconciling || selectedBankIds.length !== 1 || selectedAccountingIds.length !== 1}
                className="bg-accent text-accent-foreground hover:bg-accent/90"
+               title="Seleccione una transacción de cada tabla para activar"
               >
                 <Link2 className="mr-2 h-4 w-4" />
-                Conciliar Transacciones Seleccionadas
+                Conciliar Manualmente (Seleccionados)
              </Button>
+
+              {/* Automatic Match Button */}
+              <Button
+                onClick={handleAutoMatch}
+                disabled={isLoading || isAutoReconciling || bankTransactions.length === 0 || accountingTransactions.length === 0}
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
+                title="Conciliar automáticamente las transacciones pendientes"
+              >
+                 <Sparkles className="mr-2 h-4 w-4" />
+                 Conciliar Automáticamente (AI - Simulado)
+              </Button>
           </CardContent>
        </Card>
 
        {/* Statement Tables Section */}
        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full max-w-6xl">
          <StatementTable
-           title="Transacciones del Extracto Bancario (Pendientes)"
-           transactions={bankTransactions} // Now shows only unmatched from state
+           title="Transacciones Bancarias (Pendientes)" // Updated title
+           transactions={bankTransactions}
            selectedIds={selectedBankIds}
-           matchedIds={[]} // Not needed anymore as state holds unmatched
            onSelectionChange={setSelectedBankIds}
            className="bg-card"
            locale="es-ES" // Pass Spanish locale
           />
          <StatementTable
-           title="Transacciones del Sistema Contable (Pendientes)"
-           transactions={accountingTransactions} // Now shows only unmatched from state
+           title="Transacciones Contables (Pendientes)" // Updated title
+           transactions={accountingTransactions}
            selectedIds={selectedAccountingIds}
-           matchedIds={[]} // Not needed anymore as state holds unmatched
            onSelectionChange={setSelectedAccountingIds}
            className="bg-card"
            locale="es-ES" // Pass Spanish locale
           />
        </div>
 
-        {/* Optional: Display matched pairs fetched from backend */}
-        {/* This section could be enhanced to fetch and display matched pairs */}
+        {/* Display matched pairs */}
         {matchedPairs.length > 0 && (
           <>
              <Separator className="my-8 w-full max-w-6xl" />
              <Card className="w-full max-w-6xl mb-8 shadow-md">
                 <CardHeader><CardTitle className="text-lg">Transacciones Conciliadas Recientemente</CardTitle></CardHeader>
                 <CardContent>
-                  <ul>
+                  <ul className="max-h-48 overflow-y-auto text-sm space-y-1">
                     {matchedPairs.map((pair, index) => (
-                      <li key={index} className="text-sm mb-1 p-2 border-b">
-                        ID Banco: {pair.bankTransactionId} &lt;--&gt; ID Contabilidad: {pair.accountingTransactionId}
+                      <li key={`${pair.bankTransactionId}-${pair.accountingTransactionId}-${index}`} className="p-2 border-b text-muted-foreground">
+                        Conciliado: Banco ID <code className="bg-muted px-1 rounded">{pair.bankTransactionId}</code> con Contabilidad ID <code className="bg-muted px-1 rounded">{pair.accountingTransactionId}</code>
                       </li>
                     ))}
                   </ul>
-                   {/* Add a button to fetch all matched pairs if needed */}
                 </CardContent>
               </Card>
            </>
@@ -254,4 +316,3 @@ export default function Home() {
     </main>
   );
 }
-

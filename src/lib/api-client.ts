@@ -4,30 +4,41 @@ import type { Transaction, MatchedPair } from '@/types';
 // Use environment variable or default to localhost for development
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-// Type for the initial data response from the backend
+// --- Request/Response Types (matching backend models) ---
+
 interface InitialDataResponse {
   bank_transactions: Transaction[];
   accounting_transactions: Transaction[];
 }
 
-// Type for the file upload response from the backend
 interface UploadResponse {
   filename: string;
   message: string;
-  transactions: Transaction[]; // Return the parsed transactions
+  transactions: Transaction[];
 }
 
-// Type for the manual reconciliation request body
 interface ManualReconcileRequest {
-  bank_transaction_id: string;
-  accounting_transaction_id: string;
+  bank_transaction_id: str;
+  accounting_transaction_id: str;
 }
 
-// Type for the reconciliation response from the backend
-interface ReconcileResponse {
+interface ManualReconcileResponse {
   success: boolean;
-  message: string;
+  message: str;
   matched_pair: MatchedPair | null;
+}
+
+// New: Request body for automatic reconciliation
+interface AutoReconcileRequest {
+  bank_transactions: Transaction[];
+  accounting_transactions: Transaction[];
+}
+
+// New: Response body for automatic reconciliation
+interface AutoReconcileResponse {
+    success: boolean;
+    message: string;
+    matched_pairs: MatchedPair[];
 }
 
 // --- Helper function for fetch requests ---
@@ -65,13 +76,17 @@ async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise
         // If response is not JSON, use the status text
         errorData = { detail: response.statusText };
       }
-      console.error(`API Error (${response.status}): ${errorData?.detail || 'Unknown error'}`);
-      throw new Error(errorData?.detail || `Error fetching ${endpoint}: ${response.statusText}`);
+      const errorMessage = errorData?.detail || `Error fetching ${endpoint}: ${response.statusText}`;
+      console.error(`API Error (${response.status}): ${errorMessage}`);
+      throw new Error(errorMessage);
     }
 
     // Check if the response has content before trying to parse JSON
     if (response.status === 204 || response.headers.get('content-length') === '0') {
-        return undefined as T; // Or null, depending on expected return type for no content
+        // Return something sensible for no content, matching expected type T
+        // If T can be undefined, return undefined. If T expects an object, maybe return null or an empty object/array.
+        // Adjust this based on what your API endpoints return for 204.
+        return undefined as T;
     }
 
 
@@ -79,7 +94,12 @@ async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise
   } catch (error) {
     console.error(`Network or other error fetching ${endpoint}:`, error);
     // Re-throw the error after logging
-    throw error;
+    // Ensure the error is an instance of Error for consistent handling
+    if (error instanceof Error) {
+        throw error;
+    } else {
+        throw new Error(String(error));
+    }
   }
 }
 
@@ -111,17 +131,31 @@ export const uploadAccountingStatement = async (file: File): Promise<UploadRespo
   });
 };
 
-export const reconcileManual = async (bankTransactionId: string, accountingTransactionId: string): Promise<ReconcileResponse> => {
+export const reconcileManual = async (bankTransactionId: string, accountingTransactionId: string): Promise<ManualReconcileResponse> => {
   const requestBody: ManualReconcileRequest = {
     bank_transaction_id: bankTransactionId,
     accounting_transaction_id: accountingTransactionId,
   };
 
-  return fetchApi<ReconcileResponse>('/api/transactions/reconcile/manual', {
+  return fetchApi<ManualReconcileResponse>('/api/transactions/reconcile/manual', {
     method: 'POST',
     body: JSON.stringify(requestBody),
   });
 };
+
+// New: Function to call the automatic reconciliation endpoint
+export const reconcileAuto = async (bankTransactions: Transaction[], accountingTransactions: Transaction[]): Promise<AutoReconcileResponse> => {
+  const requestBody: AutoReconcileRequest = {
+    bank_transactions: bankTransactions,
+    accounting_transactions: accountingTransactions,
+  };
+
+  return fetchApi<AutoReconcileResponse>('/api/transactions/reconcile/auto', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
+};
+
 
 export const getMatchedPairs = async (): Promise<MatchedPair[]> => {
    return fetchApi<MatchedPair[]>('/api/transactions/matched');

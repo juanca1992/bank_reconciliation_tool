@@ -37,13 +37,13 @@ export default function Home() {
     setError(null);
     try {
       const initialData = await getInitialTransactions();
+      console.log("Initial data fetched:", initialData); // Log initial data
       setBankTransactions(initialData.bank_transactions || []);
       setAccountingTransactions(initialData.accounting_transactions || []);
-      // Reset matched pairs on initial fetch or refresh if desired
-      // Keep existing matches if needed, fetch them if not already loaded
-      // const initialMatched = await getMatchedPairs();
-      // setMatchedPairs(initialMatched || []);
-      setMatchedPairs([]); // Assuming we start fresh on reload
+      // Assuming we fetch all historical matches on initial load/refresh
+      const initialMatched = await getMatchedPairs();
+      console.log("Initial matched pairs fetched:", initialMatched); // Log initial matches
+      setMatchedPairs(initialMatched || []);
       setSelectedBankIds([]); // Clear selections on reload
       setSelectedAccountingIds([]); // Clear selections on reload
 
@@ -74,12 +74,23 @@ export default function Home() {
     try {
       const response = await uploadBankStatement(file);
       console.log("Bank upload response:", response); // Log response for debugging
-      if (response && Array.isArray(response.transactions)) {
+      if (response && Array.isArray(response.transactions) && response.transactions.length > 0) {
          // Add only new transactions that don't already exist by ID
+         // This assumes the response *only* contains the newly added transactions
          const existingIds = new Set(bankTransactions.map(tx => tx.id));
          const newUniqueTransactions = response.transactions.filter(tx => !existingIds.has(tx.id));
-         setBankTransactions(prev => [...prev, ...newUniqueTransactions]);
-        toast({ title: "Extracto Bancario Subido", description: response.message });
+
+         if (newUniqueTransactions.length > 0) {
+           console.log("Adding new unique bank transactions:", newUniqueTransactions);
+           setBankTransactions(prev => [...prev, ...newUniqueTransactions]);
+           toast({ title: "Extracto Bancario Subido", description: `${response.message} Se añadieron ${newUniqueTransactions.length} nuevas transacciones.` });
+         } else {
+            console.log("No new unique bank transactions found in the upload response.");
+            toast({ title: "Extracto Bancario Procesado", description: `${response.message} No se encontraron nuevas transacciones únicas para añadir.` });
+         }
+      } else if (response) {
+         console.log("Bank upload response indicates no new transactions were added.");
+         toast({ title: "Extracto Bancario Procesado", description: response.message });
       } else {
         console.error("Invalid bank upload response format:", response);
         toast({ title: "Error al Procesar", description: "Formato de respuesta inesperado del servidor.", variant: "destructive" });
@@ -101,12 +112,23 @@ export default function Home() {
     try {
       const response = await uploadAccountingStatement(file);
        console.log("Accounting upload response:", response); // Log response for debugging
-      if (response && Array.isArray(response.transactions)) {
+      if (response && Array.isArray(response.transactions) && response.transactions.length > 0) {
         // Add only new transactions that don't already exist by ID
+        // This assumes the response *only* contains the newly added transactions
         const existingIds = new Set(accountingTransactions.map(tx => tx.id));
         const newUniqueTransactions = response.transactions.filter(tx => !existingIds.has(tx.id));
-        setAccountingTransactions(prev => [...prev, ...newUniqueTransactions]);
-        toast({ title: "Extracto Contable Subido", description: response.message });
+
+        if (newUniqueTransactions.length > 0) {
+            console.log("Adding new unique accounting transactions:", newUniqueTransactions);
+            setAccountingTransactions(prev => [...prev, ...newUniqueTransactions]);
+            toast({ title: "Extracto Contable Subido", description: `${response.message} Se añadieron ${newUniqueTransactions.length} nuevas transacciones.` });
+         } else {
+             console.log("No new unique accounting transactions found in the upload response.");
+             toast({ title: "Extracto Contable Procesado", description: `${response.message} No se encontraron nuevas transacciones únicas para añadir.` });
+         }
+      } else if (response) {
+         console.log("Accounting upload response indicates no new transactions were added.");
+         toast({ title: "Extracto Contable Procesado", description: response.message });
       } else {
          console.error("Invalid accounting upload response format:", response);
          toast({ title: "Error al Procesar", description: "Formato de respuesta inesperado del servidor.", variant: "destructive" });
@@ -138,7 +160,9 @@ export default function Home() {
     setIsLoading(true);
     setError(null); // Clear previous errors
     try {
+      console.log(`Attempting manual match: Bank ID ${bankTxId}, Accounting ID ${accTxId}`);
       const response = await reconcileManual(bankTxId, accTxId);
+      console.log("Manual reconcile response:", response);
 
       if (response.success && response.matched_pair) {
         // Update matched pairs state
@@ -196,11 +220,16 @@ export default function Home() {
       setIsAutoReconciling(true);
       setError(null); // Clear previous errors
       try {
+        console.log("Attempting automatic reconcile with current pending transactions:");
+        console.log("Bank Txs:", bankTransactions);
+        console.log("Accounting Txs:", accountingTransactions);
         // Pass the current lists of unmatched transactions to the backend
         const response = await reconcileAuto(bankTransactions, accountingTransactions);
+        console.log("Auto reconcile response:", response);
 
         if (response.success) {
           if (response.matched_pairs.length > 0) {
+             console.log("New matches found:", response.matched_pairs);
              // Update matched pairs state with newly found matches
              setMatchedPairs(prev => [...prev, ...response.matched_pairs]);
 
@@ -214,17 +243,24 @@ export default function Home() {
              // Clear selections
              setSelectedBankIds([]);
              setSelectedAccountingIds([]);
+             toast({
+                title: "Conciliación Automática Completada",
+                description: response.message,
+                variant: "default", // Or a success variant if you have one
+                className: "bg-primary text-primary-foreground border-primary",
+              });
+          } else {
+              console.log("No new matches found by auto reconcile.");
+              toast({
+                 title: "Conciliación Automática Completada",
+                 description: response.message, // Message from backend indicates matches found or not
+                 variant: "default",
+              });
           }
-
-          toast({
-            title: "Conciliación Automática Completada",
-            description: response.message, // Message from backend indicates matches found or not
-            variant: "default", // Or a success variant if you have one
-            className: "bg-primary text-primary-foreground border-primary",
-          });
         } else {
             // Display backend message if available, otherwise generic error
             const errorDesc = response.message || "No se pudo completar la conciliación automática.";
+            console.error("Auto reconcile error:", errorDesc);
            toast({
              title: "Error de Conciliación Automática",
              description: errorDesc,
@@ -365,3 +401,5 @@ export default function Home() {
     </main>
   );
 }
+
+    

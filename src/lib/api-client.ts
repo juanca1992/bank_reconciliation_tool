@@ -1,10 +1,10 @@
-import type { Transaction, MatchedPair } from '@/types';
+import type { Transaction, MatchedPair } from '@/types'; // Asegúrate que estos tipos base estén en @/types
 
 // Define the base URL for the FastAPI backend
-// Use environment variable or default to localhost for development
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 // --- Request/Response Types (matching backend models) ---
+// (Idealmente, mover a @/types/index.ts)
 
 interface InitialDataResponse {
   bank_transactions: Transaction[];
@@ -14,149 +14,166 @@ interface InitialDataResponse {
 interface UploadResponse {
   filename: string;
   message: string;
+  transaction_count: number;
   transactions: Transaction[];
 }
 
+// Para 1 a 1 manual
 interface ManualReconcileRequest {
-  bank_transaction_id: str;
-  accounting_transaction_id: str;
+  bank_transaction_id: string; // Corregido
+  accounting_transaction_id: string; // Corregido
 }
 
 interface ManualReconcileResponse {
   success: boolean;
-  message: str;
+  message: string; // Corregido
   matched_pair: MatchedPair | null;
 }
 
-// New: Request body for automatic reconciliation
-interface AutoReconcileRequest {
-  bank_transactions: Transaction[];
-  accounting_transactions: Transaction[];
+// Para MUCHOS CONTABLES a UNO BANCARIO manual
+interface ManyToOneReconcileRequest {
+  bank_transaction_id: string;
+  accounting_transaction_ids: string[]; // Lista de IDs contables
 }
 
-// New: Response body for automatic reconciliation
+interface ManyToOneReconcileResponse { // <- Nombre corregido (era ManualReconcileManyToOneResponse)
+  success: boolean;
+  message: string;
+  matched_pairs_created: MatchedPair[]; // Devuelve lista de pares creados
+}
+
+// Para Auto (el backend actual NO espera body)
+// interface AutoReconcileRequest {
+//   bank_transactions: Transaction[];
+//   accounting_transactions: Transaction[];
+// }
+
 interface AutoReconcileResponse {
     success: boolean;
     message: string;
     matched_pairs: MatchedPair[];
 }
 
-// --- Helper function for fetch requests ---
+// --- Helper function for fetch requests (sin cambios respecto a la última versión) ---
 async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
-  const defaultHeaders = {
-    'Content-Type': 'application/json',
-    // Add other default headers if needed, e.g., Authorization
-  };
+    const url = `${API_BASE_URL}${endpoint}`;
+    const defaultHeaders: HeadersInit = {};
 
-  // Merge custom options with defaults
-  const config: RequestInit = {
-    ...options,
-    headers: {
-      ...defaultHeaders,
-      ...options.headers,
-    },
-  };
-
-  // Remove Content-Type header for FormData requests (like file uploads)
-  if (options.body instanceof FormData) {
-    delete (config.headers as Record<string, string>)['Content-Type'];
-  }
-
-
-  try {
-    const response = await fetch(url, config);
-
-    if (!response.ok) {
-      // Try to parse error details from the backend response
-      let errorData;
-      try {
-        errorData = await response.json();
-      } catch (e) {
-        // If response is not JSON, use the status text
-        errorData = { detail: response.statusText };
-      }
-      const errorMessage = errorData?.detail || `Error fetching ${endpoint}: ${response.statusText}`;
-      console.error(`API Error (${response.status}): ${errorMessage}`);
-      throw new Error(errorMessage);
+    let bodyToSend = options.body;
+    if (!(options.body instanceof FormData) && options.body != null) {
+        defaultHeaders['Content-Type'] = 'application/json';
+        if (typeof options.body !== 'string') {
+           bodyToSend = JSON.stringify(options.body);
+        }
     }
 
-    // Check if the response has content before trying to parse JSON
-    if (response.status === 204 || response.headers.get('content-length') === '0') {
-        // Return something sensible for no content, matching expected type T
-        // If T can be undefined, return undefined. If T expects an object, maybe return null or an empty object/array.
-        // Adjust this based on what your API endpoints return for 204.
-        return undefined as T;
-    }
+    const config: RequestInit = {
+      ...options,
+      body: bodyToSend,
+      headers: {
+        ...defaultHeaders,
+        ...options.headers,
+      },
+    };
 
+    try {
+      const response = await fetch(url, config);
 
-    return await response.json() as T;
-  } catch (error) {
-    console.error(`Network or other error fetching ${endpoint}:`, error);
-    // Re-throw the error after logging
-    // Ensure the error is an instance of Error for consistent handling
-    if (error instanceof Error) {
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (e) {
+          errorData = { detail: response.statusText };
+        }
+        const errorMessage = errorData?.detail ?? `Error fetching ${endpoint}: ${response.statusText}`;
+        console.error(`API Error (${response.status}): ${errorMessage}`, errorData);
+        const error = new Error(errorMessage);
+        (error as any).response = response;
+        (error as any).data = errorData;
         throw error;
-    } else {
-        throw new Error(String(error));
+      }
+
+      if (response.status === 204 || response.headers.get('content-length') === '0') {
+        return undefined as T;
+      }
+      return await response.json() as T;
+
+    } catch (error) {
+      console.error(`Network or processing error fetching ${endpoint}:`, error);
+      throw error; // Re-lanzar siempre
     }
   }
-}
 
 // --- API Client Functions ---
 
 export const getInitialTransactions = async (): Promise<InitialDataResponse> => {
-  return fetchApi<InitialDataResponse>('/api/transactions/initial');
+  // No necesita try/catch aquí
+  return await fetchApi<InitialDataResponse>('/api/transactions/initial') ?? { bank_transactions: [], accounting_transactions: [] };
 };
 
 export const uploadBankStatement = async (file: File): Promise<UploadResponse> => {
+  // No necesita try/catch aquí
   const formData = new FormData();
   formData.append('file', file);
-
-  return fetchApi<UploadResponse>('/api/transactions/upload/bank', {
+  return await fetchApi<UploadResponse>('/api/transactions/upload/bank', {
     method: 'POST',
     body: formData,
-    // 'Content-Type' is automatically set by browser for FormData
   });
 };
 
 export const uploadAccountingStatement = async (file: File): Promise<UploadResponse> => {
+  // No necesita try/catch aquí
   const formData = new FormData();
   formData.append('file', file);
-
-  return fetchApi<UploadResponse>('/api/transactions/upload/accounting', {
+  return await fetchApi<UploadResponse>('/api/transactions/upload/accounting', {
     method: 'POST',
     body: formData,
-     // 'Content-Type' is automatically set by browser for FormData
   });
 };
 
 export const reconcileManual = async (bankTransactionId: string, accountingTransactionId: string): Promise<ManualReconcileResponse> => {
+  // No necesita try/catch aquí
   const requestBody: ManualReconcileRequest = {
     bank_transaction_id: bankTransactionId,
     accounting_transaction_id: accountingTransactionId,
   };
-
-  return fetchApi<ManualReconcileResponse>('/api/transactions/reconcile/manual', {
+  return await fetchApi<ManualReconcileResponse>('/api/transactions/reconcile/manual', {
     method: 'POST',
-    body: JSON.stringify(requestBody),
+    body: requestBody, // fetchApi lo convierte a JSON
   });
 };
 
-// New: Function to call the automatic reconciliation endpoint
-export const reconcileAuto = async (bankTransactions: Transaction[], accountingTransactions: Transaction[]): Promise<AutoReconcileResponse> => {
-  const requestBody: AutoReconcileRequest = {
-    bank_transactions: bankTransactions,
-    accounting_transactions: accountingTransactions,
+// *** CORREGIDO: Conciliación Manual Muchos Contables a Uno Bancario ***
+export const reconcileManualManyToOne = async (bankTxId: string, accTxIds: string[]): Promise<ManyToOneReconcileResponse> => {
+  // No necesita try/catch aquí
+  const requestBody: ManyToOneReconcileRequest = {
+    bank_transaction_id: bankTxId,           // Un ID bancario
+    accounting_transaction_ids: accTxIds,   // Lista de IDs contables
   };
-
-  return fetchApi<AutoReconcileResponse>('/api/transactions/reconcile/auto', {
+  // Endpoint CORRECTO y body CORRECTO
+  return await fetchApi<ManyToOneReconcileResponse>('/api/transactions/reconcile/manual/many_to_one', {
     method: 'POST',
-    body: JSON.stringify(requestBody),
+    body: requestBody, // fetchApi lo convierte a JSON
+  });
+};
+
+
+// *** CORREGIDO: Conciliación Automática (sin body) ***
+export const reconcileAuto = async (): Promise<AutoReconcileResponse> => {
+  // No necesita try/catch aquí
+  return await fetchApi<AutoReconcileResponse>('/api/transactions/reconcile/auto', {
+    method: 'POST',
+    // Sin body
   });
 };
 
 
 export const getMatchedPairs = async (): Promise<MatchedPair[]> => {
-   return fetchApi<MatchedPair[]>('/api/transactions/matched');
+   // No necesita try/catch aquí
+   return await fetchApi<MatchedPair[]>('/api/transactions/matched') ?? [];
 };
+
+// QUITÉ LAS FUNCIONES reset... ya que no están implementadas en backend
+// export const resetBankTransactions = async (): Promise<void> => { ... };
+// export const resetAccountingTransactions = async (): Promise<void> => { ... };

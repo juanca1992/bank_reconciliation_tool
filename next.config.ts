@@ -18,6 +18,10 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  allowedDevOrigins: [
+    "localhost:8000",
+    "9000-idx-studio-1746226524199.cluster-ux5mmlia3zhhask7riihruxydo.cloudworkstations.dev",
+  ],
   // Make environment variables available to the client-side bundle
   // Only variables prefixed with NEXT_PUBLIC_ are exposed
   env: {

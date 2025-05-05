@@ -1,4 +1,3 @@
-
 from pydantic import BaseModel, Field
 from typing import List, Literal, Optional # Optional is needed for nullable fields
 
@@ -51,3 +50,4 @@ class UploadResponse(BaseModel):
     filename: str
     message: str
     transactions: List[Transaction] # Return parsed transactions
+

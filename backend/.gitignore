@@ -101,3 +101,9 @@ cython_debug/
 # FastAPI specific
 *.log
 *.db # Example for SQLite DB, if used
+
+# archive files
+*.zip
+*.tar.gz
+*.xls
+*.xlsx

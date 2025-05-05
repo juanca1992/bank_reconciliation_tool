@@ -17,29 +17,27 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { ClientFormattedNumber } from '@/components/ui/client-formatted-number'; // Import the new component
+import { ClientFormattedNumber } from '@/components/ui/client-formatted-number';
 import { cn } from '@/lib/utils';
-import type { Transaction } from '@/types'; // Ensure path is correct
+import type { Transaction } from '@/types';
 
 interface StatementTableProps {
   title: string;
-  transactions: Transaction[];
+  transactions: Transaction[]; // These are now expected to be *unmatched* transactions
   selectedIds: string[];
-  matchedIds: string[]; // IDs of transactions already matched
+  // matchedIds prop is removed as parent component now filters data
   onSelectionChange: (selectedIds: string[]) => void;
   className?: string;
   locale?: string; // Added locale prop
-  currency?: string; // Kept currency prop if needed elsewhere, but not used for formatting here
 }
 
 export function StatementTable({
   title,
   transactions,
   selectedIds,
-  matchedIds,
   onSelectionChange,
   className,
-  locale = 'es-ES', // Default locale set to Spanish
+  locale = 'es-ES',
 }: StatementTableProps) {
   const [filter, setFilter] = useState('');
   const [sortColumn, setSortColumn] = useState<keyof Transaction | null>(null);
@@ -47,9 +45,8 @@ export function StatementTable({
 
   const handleSelectAll = (checked: boolean | string) => {
     if (checked === true) {
-      const allSelectableIds = transactions
-        .filter((t) => !matchedIds.includes(t.id)) // Only select unmatched items
-        .map((t) => t.id);
+      // Select all currently visible and selectable transactions
+      const allSelectableIds = sortedTransactions.map((t) => t.id);
       onSelectionChange(allSelectableIds);
     } else {
       onSelectionChange([]);
@@ -57,8 +54,6 @@ export function StatementTable({
   };
 
   const handleRowSelect = (id: string, checked: boolean | string) => {
-    if (matchedIds.includes(id)) return; // Prevent selecting matched items
-
     const newSelectedIds = checked
       ? [...selectedIds, id]
       : selectedIds.filter((selectedId) => selectedId !== id);
@@ -74,29 +69,35 @@ export function StatementTable({
     }
   };
 
+  // Filter transactions based on user input
   const filteredTransactions = transactions.filter((t) =>
     Object.values(t).some((value) =>
       String(value).toLowerCase().includes(filter.toLowerCase())
     )
   );
 
+  // Sort the filtered transactions
   const sortedTransactions = [...filteredTransactions].sort((a, b) => {
     if (!sortColumn) return 0;
     const aValue = a[sortColumn];
     const bValue = b[sortColumn];
 
-    // Handle sorting for amount specifically as numbers
     if (sortColumn === 'amount') {
       return sortDirection === 'asc' ? (aValue as number) - (bValue as number) : (bValue as number) - (aValue as number);
     }
 
-    // Default string/date comparison
+    // Default string/date comparison (ensure dates are compared correctly if needed)
+     if (sortColumn === 'date') {
+       // Simple string comparison works for YYYY-MM-DD format
+       return sortDirection === 'asc' ? String(aValue).localeCompare(String(bValue)) : String(bValue).localeCompare(String(aValue));
+     }
+
     if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
     if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
     return 0;
   });
 
-  const selectableTransactionsCount = transactions.filter(t => !matchedIds.includes(t.id)).length;
+  const selectableTransactionsCount = sortedTransactions.length; // All transactions in the table are selectable now
   const isAllSelected = selectableTransactionsCount > 0 && selectedIds.length === selectableTransactionsCount;
   const isIndeterminate = selectedIds.length > 0 && selectedIds.length < selectableTransactionsCount;
 
@@ -108,7 +109,7 @@ export function StatementTable({
          <div className="flex items-center gap-2 pt-2">
              <Filter className="h-4 w-4 text-muted-foreground" />
              <Input
-               placeholder="Filtrar transacciones..." // Translated placeholder
+               placeholder="Filtrar transacciones..."
                value={filter}
                onChange={(e) => setFilter(e.target.value)}
                className="max-w-sm h-8"
@@ -123,25 +124,25 @@ export function StatementTable({
                 <Checkbox
                   checked={isAllSelected ? true : (isIndeterminate ? 'indeterminate' : false)}
                   onCheckedChange={handleSelectAll}
-                  aria-label="Seleccionar todo" // Translated aria-label
-                  disabled={selectableTransactionsCount === 0} // Disable if no selectable items
+                  aria-label="Seleccionar todo"
+                  disabled={selectableTransactionsCount === 0}
                 />
               </TableHead>
               <TableHead onClick={() => handleSort('date')}>
                  <Button variant="ghost" size="sm" className="px-2 py-1 h-auto">
-                  Fecha {/* Translated header */}
+                  Fecha
                   <ArrowUpDown className="ml-2 h-3 w-3" />
                  </Button>
               </TableHead>
               <TableHead onClick={() => handleSort('description')}>
                  <Button variant="ghost" size="sm" className="px-2 py-1 h-auto">
-                  Descripción {/* Translated header */}
+                  Descripción
                   <ArrowUpDown className="ml-2 h-3 w-3" />
                   </Button>
               </TableHead>
               <TableHead onClick={() => handleSort('amount')} className="text-right">
                  <Button variant="ghost" size="sm" className="px-2 py-1 h-auto">
-                  Monto {/* Translated header */}
+                  Monto
                   <ArrowUpDown className="ml-2 h-3 w-3" />
                  </Button>
               </TableHead>
@@ -151,29 +152,27 @@ export function StatementTable({
             {sortedTransactions.length > 0 ? (
               sortedTransactions.map((transaction) => {
                  const isSelected = selectedIds.includes(transaction.id);
-                 const isMatched = matchedIds.includes(transaction.id);
                  return (
                   <TableRow
                     key={transaction.id}
                     data-state={isSelected ? 'selected' : undefined}
                     className={cn(
-                      isMatched ? 'bg-accent/20 hover:bg-accent/30 text-muted-foreground' : '', // Style matched rows
-                      isSelected && !isMatched ? 'bg-secondary' : '', // Style selected rows
-                      'hover:bg-muted/50' // Default hover style
+                      isSelected ? 'bg-secondary' : '', // Style selected rows
+                      'hover:bg-muted/50 cursor-pointer' // Default hover style and indicate clickability
                     )}
+                    onClick={() => handleRowSelect(transaction.id, !isSelected)} // Allow clicking row to select/deselect
                   >
                     <TableCell padding="checkbox">
                       <Checkbox
-                        checked={isSelected || isMatched} // Show check if selected or matched
+                        checked={isSelected}
                         onCheckedChange={(checked) => handleRowSelect(transaction.id, checked)}
-                        aria-label={`Seleccionar transacción ${transaction.id}`} // Translated aria-label
-                        disabled={isMatched} // Disable checkbox if matched
+                        aria-label={`Seleccionar transacción ${transaction.id}`}
+                        onClick={(e) => e.stopPropagation()} // Prevent row click handler when clicking checkbox directly
                       />
                     </TableCell>
                     <TableCell className="whitespace-nowrap">{transaction.date}</TableCell>
                     <TableCell>{transaction.description}</TableCell>
                     <TableCell className="text-right whitespace-nowrap">
-                       {/* Use the client-side number formatting component */}
                        <ClientFormattedNumber amount={transaction.amount} locale={locale} />
                     </TableCell>
                   </TableRow>
@@ -182,7 +181,7 @@ export function StatementTable({
             ) : (
               <TableRow>
                 <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
-                  No se encontraron transacciones. {/* Translated message */}
+                  No se encontraron transacciones pendientes o que coincidan con el filtro.
                 </TableCell>
               </TableRow>
             )}

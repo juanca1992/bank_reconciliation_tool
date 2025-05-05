@@ -18,6 +18,11 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Make environment variables available to the client-side bundle
+  // Only variables prefixed with NEXT_PUBLIC_ are exposed
+  env: {
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
+  },
 };
 
 export default nextConfig;

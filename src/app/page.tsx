@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { StatementUpload } from '@/components/statement-upload';
 import { StatementTable } from '@/components/statement-table';
 import { Button } from '@/components/ui/button';
@@ -9,55 +9,89 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import type { Transaction, MatchedPair } from '@/types';
-import { Link2 } from 'lucide-react';
-
-// Placeholder data - replace with actual data loading logic
-// Translated descriptions
-const initialBankTransactions: Transaction[] = [
-  { id: 'b1', date: '2024-07-01', description: 'Depósito del Cliente A', amount: 1500.00, type: 'bank' },
-  { id: 'b2', date: '2024-07-03', description: 'Retiro - Cajero Automático', amount: -100.00, type: 'bank' },
-  { id: 'b3', date: '2024-07-05', description: 'Pago - Proveedor X', amount: -350.50, type: 'bank' },
-  { id: 'b4', date: '2024-07-08', description: 'Intereses Ganados', amount: 5.25, type: 'bank' },
-];
-
-const initialAccountingTransactions: Transaction[] = [
-  { id: 'a1', date: '2024-07-01', description: 'Pago Factura #123', amount: 1500.00, type: 'accounting' },
-  { id: 'a2', date: '2024-07-04', description: 'Gasto Suministros Oficina', amount: -100.00, type: 'accounting' },
-  { id: 'a3', date: '2024-07-05', description: 'Pago por INV-SUPX', amount: -350.50, type: 'accounting' },
-  { id: 'a4', date: '2024-07-09', description: 'Ingreso Intereses Bancarios', amount: 5.25, type: 'accounting' },
-];
-
+import { Link2, RefreshCw } from 'lucide-react';
+import {
+  getInitialTransactions,
+  uploadBankStatement,
+  uploadAccountingStatement,
+  reconcileManual,
+  getMatchedPairs,
+} from '@/lib/api-client'; // Import API client functions
 
 export default function Home() {
-  const [bankTransactions, setBankTransactions] = useState<Transaction[]>(initialBankTransactions);
-  const [accountingTransactions, setAccountingTransactions] = useState<Transaction[]>(initialAccountingTransactions);
+  const [bankTransactions, setBankTransactions] = useState<Transaction[]>([]);
+  const [accountingTransactions, setAccountingTransactions] = useState<Transaction[]>([]);
   const [selectedBankIds, setSelectedBankIds] = useState<string[]>([]);
   const [selectedAccountingIds, setSelectedAccountingIds] = useState<string[]>([]);
-  const [matchedPairs, setMatchedPairs] = useState<MatchedPair[]>([]); // Stores matched pairs
+  const [matchedPairs, setMatchedPairs] = useState<MatchedPair[]>([]);
+  const [isLoading, setIsLoading] = useState(true); // Loading state
+  const [error, setError] = useState<string | null>(null); // Error state
 
   const { toast } = useToast();
 
-  const handleBankFileUpload = (file: File | null) => {
-    console.log("Archivo bancario subido:", file?.name);
-    // Add logic here to parse the file and update bankTransactions state
-    if (file) {
-       toast({ title: "Extracto Bancario Subido", description: file.name });
-       // Example: Placeholder data update on upload (replace with actual parsing)
-       // setBankTransactions(parsedBankData);
+  // --- Fetch Initial Data ---
+  const fetchInitialData = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const initialData = await getInitialTransactions();
+      setBankTransactions(initialData.bank_transactions || []);
+      setAccountingTransactions(initialData.accounting_transactions || []);
+      // Optionally fetch already matched pairs if needed on initial load
+      // const initialMatched = await getMatchedPairs();
+      // setMatchedPairs(initialMatched || []);
+    } catch (err) {
+      console.error("Error fetching initial data:", err);
+      setError("Error al cargar los datos iniciales. Por favor, inténtalo de nuevo.");
+      toast({
+        title: "Error de Carga",
+        description: "No se pudieron cargar las transacciones iniciales.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleAccountingFileUpload = (file: File | null) => {
-    console.log("Archivo contable subido:", file?.name);
-    // Add logic here to parse the file and update accountingTransactions state
-    if (file) {
-      toast({ title: "Extracto Contable Subido", description: file.name });
-      // Example: Placeholder data update on upload (replace with actual parsing)
-      // setAccountingTransactions(parsedAccountingData);
+  useEffect(() => {
+    fetchInitialData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Fetch data on component mount
+
+  // --- File Upload Handlers ---
+  const handleBankFileUpload = async (file: File | null) => {
+    if (!file) return;
+    setIsLoading(true); // Consider separate loading states per upload if needed
+    try {
+      const response = await uploadBankStatement(file);
+      toast({ title: "Extracto Bancario Subido", description: response.message });
+      // Add newly uploaded transactions to the existing list
+      setBankTransactions(prev => [...prev, ...response.transactions]);
+    } catch (err) {
+       const errorMessage = err instanceof Error ? err.message : "Error desconocido al subir el archivo.";
+       toast({ title: "Error al Subir", description: errorMessage, variant: "destructive" });
+    } finally {
+       setIsLoading(false);
     }
   };
 
-  const handleManualMatch = () => {
+  const handleAccountingFileUpload = async (file: File | null) => {
+     if (!file) return;
+     setIsLoading(true);
+    try {
+      const response = await uploadAccountingStatement(file);
+      toast({ title: "Extracto Contable Subido", description: response.message });
+      setAccountingTransactions(prev => [...prev, ...response.transactions]);
+    } catch (err) {
+       const errorMessage = err instanceof Error ? err.message : "Error desconocido al subir el archivo.";
+       toast({ title: "Error al Subir", description: errorMessage, variant: "destructive" });
+    } finally {
+        setIsLoading(false);
+    }
+  };
+
+  // --- Manual Match Handler ---
+  const handleManualMatch = async () => {
     if (selectedBankIds.length !== 1 || selectedAccountingIds.length !== 1) {
       toast({
         title: "Error de Conciliación",
@@ -67,49 +101,80 @@ export default function Home() {
       return;
     }
 
-    const bankTx = bankTransactions.find(tx => tx.id === selectedBankIds[0]);
-    const accTx = accountingTransactions.find(tx => tx.id === selectedAccountingIds[0]);
+    const bankTxId = selectedBankIds[0];
+    const accTxId = selectedAccountingIds[0];
 
-    if (!bankTx || !accTx) {
-       toast({ title: "Error", description: "Transacción seleccionada no encontrada.", variant: "destructive" });
-       return;
-    }
+    setIsLoading(true);
+    try {
+      const response = await reconcileManual(bankTxId, accTxId);
 
-    // Basic check (can be more sophisticated)
-    if (bankTx.amount !== accTx.amount) {
+      if (response.success && response.matched_pair) {
+        // Update matched pairs state
+        setMatchedPairs(prev => [...prev, response.matched_pair!]);
+
+        // Remove matched transactions from the displayed lists
+        setBankTransactions(prev => prev.filter(tx => tx.id !== bankTxId));
+        setAccountingTransactions(prev => prev.filter(tx => tx.id !== accTxId));
+
+        // Clear selections
+        setSelectedBankIds([]);
+        setSelectedAccountingIds([]);
+
+        toast({
+          title: "Conciliación Exitosa",
+          description: response.message,
+          variant: "default",
+          className: "bg-accent text-accent-foreground border-accent",
+        });
+      } else {
+        // Handle potential backend failure message even if success=false isn't expected here
+         toast({
+           title: "Error de Conciliación",
+           description: response.message || "No se pudo completar la conciliación.",
+           variant: "destructive",
+         });
+      }
+    } catch (err) {
+       const errorMessage = err instanceof Error ? err.message : "Error desconocido al conciliar.";
        toast({
-         title: "Posible Discrepancia",
-         description: `Los montos difieren (${bankTx.amount.toFixed(2)} vs ${accTx.amount.toFixed(2)}). ¿Conciliar de todas formas?`,
-         // Optionally add an action button for confirmation
+         title: "Error en la Conciliación",
+         description: errorMessage,
+         variant: "destructive",
        });
-       // For now, let's allow mismatch for demonstration
+    } finally {
+       setIsLoading(false);
     }
-
-    const newMatch: MatchedPair = {
-      bankTransactionId: selectedBankIds[0],
-      accountingTransactionId: selectedAccountingIds[0],
-    };
-
-    setMatchedPairs([...matchedPairs, newMatch]);
-    // Clear selections after matching
-    setSelectedBankIds([]);
-    setSelectedAccountingIds([]);
-
-    toast({
-      title: "Conciliación Exitosa",
-      description: `Conciliado ${bankTx.description} con ${accTx.description}`,
-      variant: "default", // or use 'success' if you add that variant
-      className: "bg-accent text-accent-foreground border-accent", // Use gold accent for success
-    });
   };
 
-  // Get flat lists of matched IDs for easy lookup in tables
-  const matchedBankIds = matchedPairs.map(p => p.bankTransactionId);
-  const matchedAccountingIds = matchedPairs.map(p => p.accountingTransactionId);
+  // Get flat lists of matched IDs for easy lookup in tables (though now handled by filtering state)
+  // const matchedBankIds = matchedPairs.map(p => p.bankTransactionId);
+  // const matchedAccountingIds = matchedPairs.map(p => p.accountingTransactionId);
 
   return (
     <main className="flex min-h-screen flex-col items-center p-4 md:p-12 bg-secondary">
        <h1 className="text-3xl font-bold mb-8 text-primary">Herramienta de Conciliación Bancaria</h1>
+
+       {/* Loading and Error States */}
+       {isLoading && (
+         <div className="fixed inset-0 bg-background/80 flex items-center justify-center z-50">
+            <RefreshCw className="h-8 w-8 animate-spin text-primary" />
+            <span className="ml-3 text-lg text-foreground">Cargando...</span>
+         </div>
+       )}
+       {error && (
+         <Card className="w-full max-w-6xl mb-8 bg-destructive/10 border-destructive text-destructive-foreground p-4">
+            <CardHeader>
+               <CardTitle className="text-lg">Error</CardTitle>
+            </CardHeader>
+            <CardContent>
+               <p>{error}</p>
+               <Button variant="outline" size="sm" onClick={fetchInitialData} className="mt-4">
+                  Reintentar Carga
+               </Button>
+            </CardContent>
+         </Card>
+       )}
+
 
        {/* Upload Section */}
        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-6xl mb-8">
@@ -135,7 +200,7 @@ export default function Home() {
           <CardContent className="flex items-center justify-center">
              <Button
                onClick={handleManualMatch}
-               disabled={selectedBankIds.length !== 1 || selectedAccountingIds.length !== 1}
+               disabled={isLoading || selectedBankIds.length !== 1 || selectedAccountingIds.length !== 1}
                className="bg-accent text-accent-foreground hover:bg-accent/90"
               >
                 <Link2 className="mr-2 h-4 w-4" />
@@ -147,47 +212,46 @@ export default function Home() {
        {/* Statement Tables Section */}
        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full max-w-6xl">
          <StatementTable
-           title="Transacciones del Extracto Bancario"
-           transactions={bankTransactions}
+           title="Transacciones del Extracto Bancario (Pendientes)"
+           transactions={bankTransactions} // Now shows only unmatched from state
            selectedIds={selectedBankIds}
-           matchedIds={matchedBankIds}
+           matchedIds={[]} // Not needed anymore as state holds unmatched
            onSelectionChange={setSelectedBankIds}
            className="bg-card"
            locale="es-ES" // Pass Spanish locale
-           currency="EUR" // Use Euro for example
           />
          <StatementTable
-           title="Transacciones del Sistema Contable"
-           transactions={accountingTransactions}
+           title="Transacciones del Sistema Contable (Pendientes)"
+           transactions={accountingTransactions} // Now shows only unmatched from state
            selectedIds={selectedAccountingIds}
-           matchedIds={matchedAccountingIds}
+           matchedIds={[]} // Not needed anymore as state holds unmatched
            onSelectionChange={setSelectedAccountingIds}
            className="bg-card"
            locale="es-ES" // Pass Spanish locale
-           currency="EUR" // Use Euro for example
           />
        </div>
 
-        {/* Optional: Display matched pairs */}
-        {/*
-        <Separator className="my-8 w-full max-w-6xl" />
-        <Card className="w-full max-w-6xl mb-8 shadow-md">
-           <CardHeader><CardTitle className="text-lg">Transacciones Conciliadas</CardTitle></CardHeader>
-           <CardContent>
-             {matchedPairs.length > 0 ? (
-               <ul>
-                 {matchedPairs.map((pair, index) => (
-                   <li key={index} className="text-sm mb-1 p-2 border-b">
-                     ID Banco: {pair.bankTransactionId} &lt;--&gt; ID Contabilidad: {pair.accountingTransactionId}
-                   </li>
-                 ))}
-               </ul>
-             ) : (
-               <p className="text-muted-foreground text-center">Aún no hay transacciones conciliadas.</p>
-             )}
-           </CardContent>
-         </Card>
-         */}
+        {/* Optional: Display matched pairs fetched from backend */}
+        {/* This section could be enhanced to fetch and display matched pairs */}
+        {matchedPairs.length > 0 && (
+          <>
+             <Separator className="my-8 w-full max-w-6xl" />
+             <Card className="w-full max-w-6xl mb-8 shadow-md">
+                <CardHeader><CardTitle className="text-lg">Transacciones Conciliadas Recientemente</CardTitle></CardHeader>
+                <CardContent>
+                  <ul>
+                    {matchedPairs.map((pair, index) => (
+                      <li key={index} className="text-sm mb-1 p-2 border-b">
+                        ID Banco: {pair.bankTransactionId} &lt;--&gt; ID Contabilidad: {pair.accountingTransactionId}
+                      </li>
+                    ))}
+                  </ul>
+                   {/* Add a button to fetch all matched pairs if needed */}
+                </CardContent>
+              </Card>
+           </>
+         )}
     </main>
   );
 }
+

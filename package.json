@@ -3,11 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack -p 9002",
+    "dev:next": "next dev --turbopack -p 9002",
+    "dev:backend": "uvicorn backend.main:app --reload --port 8000",
+    "dev": "npm-run-all --parallel dev:next dev:backend",
     "genkit:dev": "genkit start -- tsx src/ai/dev.ts",
     "genkit:watch": "genkit start -- tsx --watch src/ai/dev.ts",
     "build": "next build",
-    "start": "next start",
+    "start:next": "next start -p 9002",
+    "start:backend": "uvicorn backend.main:app --host 0.0.0.0 --port 8000",
+    "start": "npm-run-all --parallel start:next start:backend",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
   },
@@ -59,6 +63,7 @@
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "genkit-cli": "^1.6.1",
+    "npm-run-all": "^4.1.5",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
     "typescript": "^5"

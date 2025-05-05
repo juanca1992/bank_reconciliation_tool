@@ -59,6 +59,17 @@ class UploadResponse(BaseModel):
     transaction_count: int
     transactions: List[Transaction] # <--- AÑADE ESTA LÍNEA DE NUEVO
 
+# main.py (cerca de donde defines otros modelos como ManualReconcileRequest)
+
+class ManyToOneReconcileRequest(BaseModel):
+    bank_transaction_id: str
+    accounting_transaction_ids: List[str]
+
+class ManyToOneReconcileResponse(BaseModel):
+    success: bool
+    message: str
+    matched_pairs_created: List[MatchedPair] = []
+
 # --- Importa funciones del script de procesamiento ---
 try:
     # Asumiendo que processing.py está en el mismo directorio
@@ -528,6 +539,84 @@ async def clear_all_data(confirm: bool = Body(..., embed=True)):
     message = "Todos los datos en memoria (transacciones y conciliaciones) han sido eliminados."
     print(f"INFO: {message}")
     return {"message": message}
+
+# --- Pega este bloque completo en tu main.py ---
+
+@app.post("/api/transactions/reconcile/manual/many_to_one",
+          response_model=ManyToOneReconcileResponse,
+          summary="Conciliar Múltiples Contables con Una Bancaria Manualmente")
+async def reconcile_manual_many_to_one(request: ManyToOneReconcileRequest = Body(...)):
+    """
+    Permite conciliar una transacción bancaria específica con una o más
+    transacciones contables. Verifica sumas y estados de conciliación previos.
+    """
+    bank_tx_id = request.bank_transaction_id
+    acc_tx_ids = request.accounting_transaction_ids
+
+    if not acc_tx_ids:
+        raise HTTPException(status_code=400, detail="Debe proporcionar al menos un ID de transacción contable.")
+
+    # --- Validación ---
+    # 1. Encontrar transacción bancaria
+    bank_tx = find_transaction(bank_tx_id, 'bank')
+    if not bank_tx:
+        raise HTTPException(status_code=404, detail=f"No se encontró la transacción bancaria con ID {bank_tx_id}.")
+
+    # 2. Verificar si la transacción bancaria ya está conciliada (participa en CUALQUIER par)
+    # ¡OJO! Esta validación podría ser demasiado estricta si permites que una bancaria
+    # se concilie con múltiples contables en diferentes momentos.
+    # Si quieres permitirlo (como hace la lógica actual), podrías comentar esta parte.
+    # Pero si una bancaria solo debe conciliarse una vez (quizás con varias contables a la vez), déjala.
+    # Decisión: La dejaremos por ahora para ser estrictos, pero considera comentarla si necesitas más flexibilidad.
+    if any(p.bankTransactionId == bank_tx_id for p in db["matched_pairs"]):
+        raise HTTPException(status_code=400, detail=f"La transacción bancaria {bank_tx_id} ya participa en otra conciliación.")
+
+    # 3. Encontrar transacciones contables y verificar su estado
+    accounting_txs: List[Transaction] = []
+    total_accounting_amount = 0.0
+    for acc_id in acc_tx_ids:
+        acc_tx = find_transaction(acc_id, 'accounting')
+        if not acc_tx:
+            raise HTTPException(status_code=404, detail=f"No se encontró la transacción contable con ID {acc_id}.")
+        # Verificar si esta transacción contable específica ya está en algún par
+        if any(p.accountingTransactionId == acc_id for p in db["matched_pairs"]):
+            raise HTTPException(status_code=400, detail=f"La transacción contable {acc_id} ya participa en otra conciliación.")
+        accounting_txs.append(acc_tx)
+        total_accounting_amount += acc_tx.amount
+
+    # 4. (Recomendado) Verificar Suma de Montos
+    tolerance = 0.01 # Ej: 1 céntimo de diferencia permitido
+    amount_match = abs(bank_tx.amount - total_accounting_amount) < tolerance
+    warning_message = ""
+    if not amount_match:
+        warning_message = (f"Advertencia: La suma de los montos contables ({total_accounting_amount:.2f}) "
+                           f"no coincide exactamente (tolerancia {tolerance:.2f}) "
+                           f"con el monto bancario ({bank_tx.amount:.2f}). ")
+        print(f"WARN: {warning_message} para Banco ID {bank_tx_id}")
+        # Decisión: Solo advertencia, no error. Cambia a HTTPException(400) si quieres que sea error.
+
+    # --- Creación de Pares ---
+    newly_created_pairs: List[MatchedPair] = []
+    for acc_tx in accounting_txs:
+        new_match = MatchedPair(
+            bankTransactionId=bank_tx_id,
+            accountingTransactionId=acc_tx.id,
+        )
+        db["matched_pairs"].append(new_match) # Añadir al estado global
+        newly_created_pairs.append(new_match)
+
+    count = len(newly_created_pairs)
+    final_message = (f"{warning_message}Conciliación manual muchos-a-uno exitosa. "
+                     f"Se vincularon {count} transacciones contables con la transacción bancaria {bank_tx_id}.")
+    print(f"INFO: {final_message}")
+
+    return ManyToOneReconcileResponse(
+        success=True,
+        message=final_message,
+        matched_pairs_created=newly_created_pairs
+    )
+
+# --- Fin del bloque para pegar ---
 
 # --- Para ejecutar con uvicorn (si este es tu archivo principal) ---
 # if __name__ == "__main__":

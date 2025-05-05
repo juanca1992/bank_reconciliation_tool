@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -39,13 +40,17 @@ export default function Home() {
       setBankTransactions(initialData.bank_transactions || []);
       setAccountingTransactions(initialData.accounting_transactions || []);
       // Reset matched pairs on initial fetch or refresh if desired
-      setMatchedPairs([]);
-      // Fetch previously matched pairs if needed
+      // Keep existing matches if needed, fetch them if not already loaded
       // const initialMatched = await getMatchedPairs();
       // setMatchedPairs(initialMatched || []);
+      setMatchedPairs([]); // Assuming we start fresh on reload
+      setSelectedBankIds([]); // Clear selections on reload
+      setSelectedAccountingIds([]); // Clear selections on reload
+
     } catch (err) {
       console.error("Error fetching initial data:", err);
-      setError("Error al cargar los datos iniciales. Por favor, inténtalo de nuevo.");
+      const errorMessage = err instanceof Error ? err.message : "Error desconocido al cargar datos.";
+      setError(`Error al cargar los datos iniciales: ${errorMessage}. Por favor, inténtalo de nuevo.`);
       toast({
         title: "Error de Carga",
         description: "No se pudieron cargar las transacciones iniciales.",
@@ -65,13 +70,25 @@ export default function Home() {
   const handleBankFileUpload = async (file: File | null) => {
     if (!file) return;
     setIsLoading(true);
+    setError(null); // Clear previous errors
     try {
       const response = await uploadBankStatement(file);
-      toast({ title: "Extracto Bancario Subido", description: response.message });
-      setBankTransactions(prev => [...prev, ...response.transactions]);
+      console.log("Bank upload response:", response); // Log response for debugging
+      if (response && Array.isArray(response.transactions)) {
+         // Add only new transactions that don't already exist by ID
+         const existingIds = new Set(bankTransactions.map(tx => tx.id));
+         const newUniqueTransactions = response.transactions.filter(tx => !existingIds.has(tx.id));
+         setBankTransactions(prev => [...prev, ...newUniqueTransactions]);
+        toast({ title: "Extracto Bancario Subido", description: response.message });
+      } else {
+        console.error("Invalid bank upload response format:", response);
+        toast({ title: "Error al Procesar", description: "Formato de respuesta inesperado del servidor.", variant: "destructive" });
+      }
     } catch (err) {
+       console.error("Error uploading bank statement:", err);
        const errorMessage = err instanceof Error ? err.message : "Error desconocido al subir el archivo.";
-       toast({ title: "Error al Subir", description: errorMessage, variant: "destructive" });
+       toast({ title: "Error al Subir", description: `Error al subir extracto bancario: ${errorMessage}`, variant: "destructive" });
+       setError(`Error al subir extracto bancario: ${errorMessage}`);
     } finally {
        setIsLoading(false);
     }
@@ -80,13 +97,25 @@ export default function Home() {
   const handleAccountingFileUpload = async (file: File | null) => {
      if (!file) return;
      setIsLoading(true);
+     setError(null); // Clear previous errors
     try {
       const response = await uploadAccountingStatement(file);
-      toast({ title: "Extracto Contable Subido", description: response.message });
-      setAccountingTransactions(prev => [...prev, ...response.transactions]);
+       console.log("Accounting upload response:", response); // Log response for debugging
+      if (response && Array.isArray(response.transactions)) {
+        // Add only new transactions that don't already exist by ID
+        const existingIds = new Set(accountingTransactions.map(tx => tx.id));
+        const newUniqueTransactions = response.transactions.filter(tx => !existingIds.has(tx.id));
+        setAccountingTransactions(prev => [...prev, ...newUniqueTransactions]);
+        toast({ title: "Extracto Contable Subido", description: response.message });
+      } else {
+         console.error("Invalid accounting upload response format:", response);
+         toast({ title: "Error al Procesar", description: "Formato de respuesta inesperado del servidor.", variant: "destructive" });
+      }
     } catch (err) {
+        console.error("Error uploading accounting statement:", err);
        const errorMessage = err instanceof Error ? err.message : "Error desconocido al subir el archivo.";
-       toast({ title: "Error al Subir", description: errorMessage, variant: "destructive" });
+       toast({ title: "Error al Subir", description: `Error al subir extracto contable: ${errorMessage}`, variant: "destructive" });
+       setError(`Error al subir extracto contable: ${errorMessage}`);
     } finally {
         setIsLoading(false);
     }
@@ -107,6 +136,7 @@ export default function Home() {
     const accTxId = selectedAccountingIds[0];
 
     setIsLoading(true);
+    setError(null); // Clear previous errors
     try {
       const response = await reconcileManual(bankTxId, accTxId);
 
@@ -129,19 +159,24 @@ export default function Home() {
           className: "bg-accent text-accent-foreground border-accent",
         });
       } else {
+         // Display backend message if available, otherwise generic error
+         const errorDesc = response.message || "No se pudo completar la conciliación.";
          toast({
            title: "Error de Conciliación Manual",
-           description: response.message || "No se pudo completar la conciliación.",
+           description: errorDesc,
            variant: "destructive",
          });
+         setError(errorDesc);
       }
     } catch (err) {
+       console.error("Error during manual reconciliation:", err);
        const errorMessage = err instanceof Error ? err.message : "Error desconocido al conciliar manualmente.";
        toast({
          title: "Error en Conciliación Manual",
          description: errorMessage,
          variant: "destructive",
        });
+       setError(`Error en conciliación manual: ${errorMessage}`);
     } finally {
        setIsLoading(false);
     }
@@ -159,45 +194,53 @@ export default function Home() {
       }
 
       setIsAutoReconciling(true);
+      setError(null); // Clear previous errors
       try {
         // Pass the current lists of unmatched transactions to the backend
         const response = await reconcileAuto(bankTransactions, accountingTransactions);
 
         if (response.success) {
-          // Update matched pairs state with newly found matches
-          setMatchedPairs(prev => [...prev, ...response.matched_pairs]);
+          if (response.matched_pairs.length > 0) {
+             // Update matched pairs state with newly found matches
+             setMatchedPairs(prev => [...prev, ...response.matched_pairs]);
 
-          // Update the bank and accounting transaction lists to remove the newly matched ones
-          const newlyMatchedBankIds = new Set(response.matched_pairs.map(p => p.bankTransactionId));
-          const newlyMatchedAccIds = new Set(response.matched_pairs.map(p => p.accountingTransactionId));
+             // Update the bank and accounting transaction lists to remove the newly matched ones
+             const newlyMatchedBankIds = new Set(response.matched_pairs.map(p => p.bankTransactionId));
+             const newlyMatchedAccIds = new Set(response.matched_pairs.map(p => p.accountingTransactionId));
 
-          setBankTransactions(prev => prev.filter(tx => !newlyMatchedBankIds.has(tx.id)));
-          setAccountingTransactions(prev => prev.filter(tx => !newlyMatchedAccIds.has(tx.id)));
+             setBankTransactions(prev => prev.filter(tx => !newlyMatchedBankIds.has(tx.id)));
+             setAccountingTransactions(prev => prev.filter(tx => !newlyMatchedAccIds.has(tx.id)));
 
-          // Clear selections
-          setSelectedBankIds([]);
-          setSelectedAccountingIds([]);
+             // Clear selections
+             setSelectedBankIds([]);
+             setSelectedAccountingIds([]);
+          }
 
           toast({
             title: "Conciliación Automática Completada",
-            description: response.message,
+            description: response.message, // Message from backend indicates matches found or not
             variant: "default", // Or a success variant if you have one
             className: "bg-primary text-primary-foreground border-primary",
           });
         } else {
+            // Display backend message if available, otherwise generic error
+            const errorDesc = response.message || "No se pudo completar la conciliación automática.";
            toast({
              title: "Error de Conciliación Automática",
-             description: response.message || "No se pudo completar la conciliación automática.",
+             description: errorDesc,
              variant: "destructive",
            });
+           setError(errorDesc);
         }
       } catch (err) {
+         console.error("Error during automatic reconciliation:", err);
          const errorMessage = err instanceof Error ? err.message : "Error desconocido al ejecutar la conciliación automática.";
          toast({
            title: "Error en Conciliación Automática",
            description: errorMessage,
            variant: "destructive",
          });
+         setError(`Error en conciliación automática: ${errorMessage}`);
       } finally {
          setIsAutoReconciling(false);
       }
@@ -217,12 +260,16 @@ export default function Home() {
        {error && (
          <Card className="w-full max-w-6xl mb-8 bg-destructive/10 border-destructive text-destructive-foreground p-4">
             <CardHeader>
-               <CardTitle className="text-lg">Error</CardTitle>
+               <CardTitle className="text-lg text-destructive">Error</CardTitle> {/* Ensure title uses destructive color */}
             </CardHeader>
             <CardContent>
                <p>{error}</p>
-               <Button variant="outline" size="sm" onClick={fetchInitialData} className="mt-4">
-                  Reintentar Carga
+               <Button variant="outline" size="sm" onClick={fetchInitialData} className="mt-4 border-destructive text-destructive hover:bg-destructive/10">
+                  Reintentar Carga Inicial
+               </Button>
+               {/* Optionally add a button to clear the error */}
+               <Button variant="ghost" size="sm" onClick={() => setError(null)} className="mt-4 ml-2 text-muted-foreground">
+                  Descartar
                </Button>
             </CardContent>
          </Card>
@@ -235,11 +282,13 @@ export default function Home() {
            title="Subir Extracto Bancario"
            onFileUpload={handleBankFileUpload}
            className="bg-card"
+           disabled={isLoading || isAutoReconciling} // Disable upload while loading/matching
           />
          <StatementUpload
            title="Subir Extracto del Sistema Contable"
            onFileUpload={handleAccountingFileUpload}
            className="bg-card"
+           disabled={isLoading || isAutoReconciling} // Disable upload while loading/matching
           />
        </div>
 
@@ -270,7 +319,7 @@ export default function Home() {
                 title="Conciliar automáticamente las transacciones pendientes"
               >
                  <Sparkles className="mr-2 h-4 w-4" />
-                 Conciliar Automáticamente (AI - Simulado)
+                 Conciliar Automáticamente (Simulado)
               </Button>
           </CardContent>
        </Card>
@@ -300,7 +349,7 @@ export default function Home() {
           <>
              <Separator className="my-8 w-full max-w-6xl" />
              <Card className="w-full max-w-6xl mb-8 shadow-md">
-                <CardHeader><CardTitle className="text-lg">Transacciones Conciliadas Recientemente</CardTitle></CardHeader>
+                <CardHeader><CardTitle className="text-lg">Transacciones Conciliadas</CardTitle></CardHeader>
                 <CardContent>
                   <ul className="max-h-48 overflow-y-auto text-sm space-y-1">
                     {matchedPairs.map((pair, index) => (
